@@ -142,6 +142,7 @@ export const Chats: React.FC<SettingsProps> = ({ onClose }) => {
         columns={columns}
         data={chatsWithPreview}
         onRowSelect={handleSelectChat}
+        onRowDoubleClick={handleRestoreChat}
         style={{ height: "calc(80vh - 100px)", overflow: "auto" }}
         initialSelectedIndex={Object.values(chatRecords).findIndex(
           (chat) => chat.id === currentChatRecord.id,
