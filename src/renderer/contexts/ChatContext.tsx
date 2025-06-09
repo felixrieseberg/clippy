@@ -66,7 +66,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
   const [animationKey, setAnimationKey] = useState<string>("");
   const [status, setStatus] = useState<ClippyNamedStatus>("welcome");
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [isModelLoaded, setIsModelLoaded] = useState(false); // This will be determined by an effect
   const { settings, models } = useContext(SharedStateContext);
   const debug = useDebugState();
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false);
@@ -137,7 +137,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const loadModel = useCallback(
     async (initialPrompts: LanguageModelPrompt[] = []) => {
-      setIsModelLoaded(false);
+      // setIsModelLoaded(false); // This will be handled by the dedicated effect
 
       const options: LanguageModelCreateOptions = {
         modelAlias: settings.selectedModel,
@@ -151,7 +151,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       try {
         await electronAi.create(options);
-        setIsModelLoaded(true);
+        // setIsModelLoaded(true); // This will be handled by the dedicated effect
       } catch (error) {
         console.error(error);
 
@@ -242,24 +242,70 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     settings.systemPrompt,
     settings.topK,
     settings.temperature,
+    // Removed setIsModelLoaded from loadModel's dependencies as it no longer calls it directly
   ]);
 
-  // If selectedModel is undefined or not available, set it to the first downloaded model
+  // Effect to determine if the selected model is "loaded" based on its properties
   useEffect(() => {
-    if (
-      !settings.selectedModel ||
-      !models[settings.selectedModel] ||
-      !models[settings.selectedModel].downloaded
-    ) {
-      const downloadedModel = Object.values(models).find(
-        (model) => model.downloaded,
-      );
+    if (debug?.simulateDownload) { // Debug override
+      setIsModelLoaded(true);
+      return;
+    }
 
-      if (downloadedModel) {
-        clippyApi.setState("settings.selectedModel", downloadedModel.name);
+    const modelNameFromSettings = settings.selectedModel;
+    if (!modelNameFromSettings || !models?.[modelNameFromSettings]) {
+      setIsModelLoaded(false);
+      return;
+    }
+
+    const selectedModelDetails = models[modelNameFromSettings];
+
+    if (selectedModelDetails.provider === "gguf") {
+      setIsModelLoaded(selectedModelDetails.downloaded === true);
+    } else {
+      // For remote models, "loaded" means configured
+      setIsModelLoaded(
+        !!(
+          selectedModelDetails.apiBaseUrl && selectedModelDetails.modelName
+        ),
+      );
+    }
+  }, [settings.selectedModel, models, debug?.simulateDownload]);
+
+  // If selectedModel is undefined or not "loaded" according to new logic,
+  // try to select a default one (first available GGUF downloaded, or first configured remote)
+  useEffect(() => {
+    const modelNameFromSettings = settings.selectedModel;
+    let currentModelIsConsideredLoaded = false;
+
+    if (modelNameFromSettings && models?.[modelNameFromSettings]) {
+      const details = models[modelNameFromSettings];
+      if (details.provider === 'gguf') {
+        currentModelIsConsideredLoaded = details.downloaded === true;
+      } else {
+        currentModelIsConsideredLoaded = !!(details.apiBaseUrl && details.modelName);
       }
     }
-  }, [models]);
+
+    if (!currentModelIsConsideredLoaded) {
+      // Try to find a downloaded GGUF model first
+      let defaultModel = Object.values(models).find(
+        (model) => model.provider === "gguf" && model.downloaded,
+      );
+
+      // If no downloaded GGUF, try to find a configured remote model
+      if (!defaultModel) {
+        defaultModel = Object.values(models).find(
+          (model) =>
+            model.provider !== "gguf" && model.apiBaseUrl && model.modelName,
+        );
+      }
+
+      if (defaultModel && defaultModel.name !== settings.selectedModel) {
+        clippyApi.setState("settings.selectedModel", defaultModel.name);
+      }
+    }
+  }, [models, settings.selectedModel]);
 
   // At app startup, initially load the chat records from the main process
   useEffect(() => {

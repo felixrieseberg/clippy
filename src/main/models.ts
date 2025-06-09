@@ -37,6 +37,10 @@ class ModelManager {
       ...model,
       downloaded: this.getIsModelDownloaded(model),
       path: getModelPath(model),
+      apiBaseUrl: model.apiBaseUrl,
+      apiKey: model.apiKey,
+      modelName: model.modelName,
+      provider: model.provider,
     };
   }
 
@@ -234,6 +238,10 @@ class ModelManager {
         imported: model.imported,
         downloaded: this.getIsModelDownloaded(model),
         downloadState,
+        apiBaseUrl: model.apiBaseUrl,
+        apiKey: model.apiKey,
+        modelName: model.modelName,
+        provider: model.provider,
       };
     }
 
@@ -301,6 +309,10 @@ class ModelManager {
         path: filePath,
         description: `Imported GGUF model from ${filePath}.`,
         imported: true,
+        provider: "gguf",
+        apiBaseUrl: undefined,
+        apiKey: undefined,
+        modelName: undefined,
       };
 
       const models = { ...this.models, [fileName]: model };

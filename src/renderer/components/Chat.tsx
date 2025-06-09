@@ -5,6 +5,7 @@ import { ChatInput } from "./ChatInput";
 import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import { useChat } from "../contexts/ChatContext";
 import { electronAi } from "../clippyApi";
+import { useSharedState } from "../contexts/SharedStateContext";
 
 export type ChatProps = {
   style?: React.CSSProperties;
@@ -13,6 +14,7 @@ export type ChatProps = {
 export function Chat({ style }: ChatProps) {
   const { setAnimationKey, setStatus, status, messages, addMessage } =
     useChat();
+  const { models, settings } = useSharedState();
   const [streamingMessageContent, setStreamingMessageContent] =
     useState<string>("");
   const [lastRequestUUID, setLastRequestUUID] = useState<string>(
@@ -43,9 +45,34 @@ export function Chat({ style }: ChatProps) {
       const requestUUID = crypto.randomUUID();
       setLastRequestUUID(requestUUID);
 
-      const response = await window.electronAi.promptStreaming(message, {
+      const options: Record<string, any> = {
         requestUUID,
-      });
+      };
+
+      const modelNameFromSettings = settings.selectedModel;
+      if (modelNameFromSettings && models?.[modelNameFromSettings]) {
+        const selectedModelDetails = models[modelNameFromSettings];
+
+        if (
+          selectedModelDetails &&
+          selectedModelDetails.provider &&
+          selectedModelDetails.provider !== "gguf" &&
+          selectedModelDetails.modelName && // Ensure API model name is present
+          selectedModelDetails.apiBaseUrl // Ensure API base URL is present
+        ) {
+          options.model = selectedModelDetails.modelName;
+          options.apiBase = selectedModelDetails.apiBaseUrl;
+          if (selectedModelDetails.apiKey) {
+            options.apiKey = selectedModelDetails.apiKey;
+          }
+          options.provider = selectedModelDetails.provider;
+        }
+      }
+
+      const response = await window.electronAi.promptStreaming(
+        message,
+        options,
+      );
 
       let fullContent = "";
       let filteredContent = "";

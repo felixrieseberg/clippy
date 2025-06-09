@@ -89,6 +89,11 @@ export class StateManager {
         models[model.name].homepage = model.homepage;
         models[model.name].size = model.size;
         models[model.name].url = model.url;
+        // Ensure new fields are also updated from BUILT_IN_MODELS
+        models[model.name].apiBaseUrl = model.apiBaseUrl;
+        models[model.name].apiKey = model.apiKey;
+        models[model.name].modelName = model.modelName;
+        models[model.name].provider = model.provider;
       }
     }
 
