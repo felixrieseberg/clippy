@@ -24,6 +24,7 @@ interface TableViewProps {
   data: Row[];
   style?: React.CSSProperties;
   onRowSelect?: (index: number) => void;
+  onRowDoubleClick?: (index: number) => void;
   initialSelectedIndex?: number;
 }
 
@@ -31,6 +32,7 @@ export const TableView: React.FC<TableViewProps> = ({
   columns,
   data,
   onRowSelect,
+  onRowDoubleClick,
   style,
   initialSelectedIndex,
 }) => {
@@ -250,6 +252,7 @@ export const TableView: React.FC<TableViewProps> = ({
               key={rowIndex}
               className={selectedRowIndex === rowIndex ? "highlighted" : ""}
               onClick={() => handleRowSelect(rowIndex)}
+              onDoubleClick={() => onRowDoubleClick?.(rowIndex)}
             >
               {columns.map((column) => (
                 <td
