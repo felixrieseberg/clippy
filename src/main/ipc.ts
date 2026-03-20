@@ -1,4 +1,5 @@
-import { clipboard, Data, ipcMain } from "electron";
+import { clipboard, Data, dialog, ipcMain } from "electron";
+import fs from "fs";
 import {
   toggleChatWindow,
   maximizeChatWindow,
@@ -95,9 +96,49 @@ export function setupIpcListeners() {
   ipcMain.handle(IpcMessages.CHAT_DELETE_ALL_CHATS, () =>
     getChatManager().deleteAllChats(),
   );
+  ipcMain.handle(
+    IpcMessages.CHAT_EXPORT_FOR_CLAUDE,
+    async (_, chatWithMessages: ChatWithMessages) => {
+      const result = await dialog.showSaveDialog({
+        title: "Export Chat for Claude Code",
+        defaultPath: "chat-context.md",
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return false;
+      }
+
+      const content = formatChatForClaude(chatWithMessages);
+      await fs.promises.writeFile(result.filePath, content, "utf8");
+      return true;
+    },
+  );
 
   // Clipboard
   ipcMain.handle(IpcMessages.CLIPBOARD_WRITE, (_, data: Data) =>
     clipboard.write(data, "clipboard"),
   );
+}
+
+function formatChatForClaude(chatWithMessages: ChatWithMessages): string {
+  const date = new Date(chatWithMessages.chat.createdAt).toLocaleString();
+  const lines: string[] = [
+    "# Clippy Chat Context",
+    "",
+    `> Exported from Clippy on ${date}`,
+    "",
+    "## Conversation",
+    "",
+  ];
+
+  for (const message of chatWithMessages.messages) {
+    if (!message.content) {
+      continue;
+    }
+    const speaker = message.sender === "user" ? "**User**" : "**Clippy**";
+    lines.push(`${speaker}: ${message.content}`, "");
+  }
+
+  return lines.join("\n");
 }

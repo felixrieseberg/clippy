@@ -52,6 +52,7 @@ export type ClippyApi = {
   deleteAllChats: () => Promise<void>;
   onNewChat: (callback: () => void) => void;
   offNewChat: () => void;
+  exportChatForClaude: (chatWithMessages: ChatWithMessages) => Promise<boolean>;
   // Clipboard
   clipboardWrite: (data: Data) => Promise<void>;
 };
