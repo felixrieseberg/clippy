@@ -19,6 +19,7 @@ export const Chats: React.FC<SettingsProps> = ({ onClose }) => {
     deleteAllChats,
   } = useChat();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedChatIndex, setSelectedChatIndex] = useState<number | null>(
     null,
   );
@@ -95,6 +96,31 @@ export const Chats: React.FC<SettingsProps> = ({ onClose }) => {
     }
   };
 
+  const handleExportForClaude = async () => {
+    if (
+      selectedChatIndex === null ||
+      selectedChatIndex >= chatsWithPreview.length
+    ) {
+      return;
+    }
+
+    const chatId = chatsWithPreview[selectedChatIndex].id;
+    const chatWithMessages = await clippyApi.getChatWithMessages(chatId);
+
+    if (!chatWithMessages) {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await clippyApi.exportChatForClaude(chatWithMessages);
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const columns = [
     { key: "preview", header: "Preview" },
     { key: "lastUpdated", header: "Last Updated" },
@@ -125,6 +151,12 @@ export const Chats: React.FC<SettingsProps> = ({ onClose }) => {
             disabled={selectedChatIndex === null}
           >
             Restore Chat
+          </button>
+          <button
+            onClick={handleExportForClaude}
+            disabled={isExporting || selectedChatIndex === null}
+          >
+            Export for Claude
           </button>
           <button
             onClick={handleDeleteSelected}
