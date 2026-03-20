@@ -91,6 +91,8 @@ const clippyApi: ClippyApi = {
   offNewChat: () => {
     ipcRenderer.removeAllListeners(IpcMessages.CHAT_NEW_CHAT);
   },
+  exportChatForClaude: (chatWithMessages: ChatWithMessages) =>
+    ipcRenderer.invoke(IpcMessages.CHAT_EXPORT_FOR_CLAUDE, chatWithMessages),
 
   // App
   getVersions: () => ipcRenderer.invoke(IpcMessages.APP_GET_VERSIONS),

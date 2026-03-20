@@ -40,6 +40,7 @@ export const IpcMessages = {
   CHAT_DELETE_CHAT: "clippy_chat_delete_chat",
   CHAT_DELETE_ALL_CHATS: "clippy_chat_delete_all_chats",
   CHAT_NEW_CHAT: "clippy_chat_new_chat",
+  CHAT_EXPORT_FOR_CLAUDE: "clippy_chat_export_for_claude",
 
   // Clipboard
   CLIPBOARD_WRITE: "clippy_clipboard_write",
