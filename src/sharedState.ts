@@ -9,6 +9,9 @@ export type DefaultFontSize = number;
 
 export interface SettingsState {
   selectedModel?: string;
+  provider?: "local" | "openrouter" | "xai";
+  openRouterApiKey?: string;
+  xAiApiKey?: string;
   systemPrompt?: string;
   clippyAlwaysOnTop?: boolean;
   chatAlwaysOnTop?: boolean;

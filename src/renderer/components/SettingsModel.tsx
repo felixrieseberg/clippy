@@ -82,6 +82,47 @@ export const SettingsModel: React.FC = () => {
         </a>
       </p>
 
+      <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        <label>
+          <strong>AI Provider:</strong>
+          <select 
+            value={settings.provider || "local"} 
+            onChange={(e) => clippyApi.setState("settings.provider", e.target.value)}
+            style={{ marginLeft: "10px", padding: "5px" }}
+          >
+            <option value="local">Local Models (Llama.cpp)</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="xai">xAI</option>
+          </select>
+        </label>
+        
+        {settings.provider === "openrouter" && (
+          <label>
+            <strong>OpenRouter API Key:</strong>
+            <input 
+              type="password" 
+              value={settings.openRouterApiKey || ""} 
+              onChange={(e) => clippyApi.setState("settings.openRouterApiKey", e.target.value)}
+              placeholder="sk-or-v1-..."
+              style={{ marginLeft: "10px", width: "300px", padding: "5px" }}
+            />
+          </label>
+        )}
+
+        {settings.provider === "xai" && (
+          <label>
+            <strong>xAI API Key:</strong>
+            <input 
+              type="password" 
+              value={settings.xAiApiKey || ""} 
+              onChange={(e) => clippyApi.setState("settings.xAiApiKey", e.target.value)}
+              placeholder="xai-..."
+              style={{ marginLeft: "10px", width: "300px", padding: "5px" }}
+            />
+          </label>
+        )}
+      </div>
+
       <button
         style={{ marginBottom: 10 }}
         onClick={() => clippyApi.addModelFromFile()}
