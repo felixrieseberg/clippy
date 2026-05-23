@@ -47,9 +47,8 @@ export function Clippy() {
 
   const toggleChat = useCallback((e: React.MouseEvent) => {
     if (e.ctrlKey) {
-      // Ctrl+Click → open full settings window
-      clippyApi.maximizeChatWindow();
-      window.open("", "", "width=450,height=650,positionNextToParent");
+      // Ctrl+Click → open/focus the full settings window via IPC
+      clippyApi.toggleChatWindow();
       return;
     }
     setIsChatWindowOpen(!isChatWindowOpen);
