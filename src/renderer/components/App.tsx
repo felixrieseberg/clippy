@@ -1,12 +1,9 @@
 import "./css/App.css";
-import "../../../node_modules/98.css/dist/98.css";
-import "./css/98.extended.css";
-import "./css/Theme.css";
+import "./css/ModernTheme.css";
 
 import { Clippy } from "./Clippy";
+import { ChatPopup } from "./ChatPopup";
 import { ChatProvider } from "../contexts/ChatContext";
-import { WindowPortal } from "./WindowPortal";
-import { Bubble } from "./BubbleWindow";
 import { SharedStateProvider } from "../contexts/SharedStateContext";
 import { BubbleViewProvider } from "../contexts/BubbleViewContext";
 import { DebugProvider } from "../contexts/DebugContext";
@@ -23,18 +20,18 @@ export function App() {
                 position: "fixed",
                 bottom: 0,
                 right: 0,
+                width: "100%",
+                height: "100%",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "flex-end",
                 justifyContent: "flex-end",
-                width: "100%",
-                height: "100%",
               }}
             >
+              {/* Inline chat popup – no separate OS window */}
+              <ChatPopup />
+              {/* The Clippy character */}
               <Clippy />
-              <WindowPortal width={450} height={650}>
-                <Bubble />
-              </WindowPortal>
             </div>
           </BubbleViewProvider>
         </ChatProvider>

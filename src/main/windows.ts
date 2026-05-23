@@ -34,8 +34,8 @@ export async function createMainWindow() {
   const settings = getStateManager().store.get("settings");
 
   mainWindow = new BrowserWindow({
-    width: 125,
-    height: 100,
+    width: 400,
+    height: 640,
     transparent: true,
     hasShadow: false,
     frame: false,
