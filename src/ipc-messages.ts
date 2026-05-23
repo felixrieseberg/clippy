@@ -5,6 +5,8 @@ export const IpcMessages = {
   MAXIMIZE_CHAT_WINDOW: "clippy_maximize_chat_window",
   SET_BUBBLE_VIEW: "clippy_set_bubble_view",
   POPUP_APP_MENU: "clippy_popup_app_menu",
+  POPUP_CHAT_OPEN: "clippy_popup_chat_open",
+  POPUP_CHAT_CLOSE: "clippy_popup_chat_close",
 
   // Model messages
   DOWNLOAD_MODEL_BY_NAME: "clippy_download_model_by_name",

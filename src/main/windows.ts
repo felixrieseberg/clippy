@@ -1,4 +1,69 @@
 import { BrowserWindow, shell, screen, app } from "electron";
+
+const CLIPPY_W = 125;
+const CLIPPY_H = 100;
+const POPUP_W  = 360;
+const POPUP_H  = 540;
+const MARGIN   = 12;
+
+/**
+ * Reposition and resize the main window so the inline chat popup
+ * always fits on-screen, regardless of where Clippy is sitting.
+ *
+ * Strategy:
+ *  - Start with Clippy's current position (bottom-right corner of the screen by default)
+ *  - Find the display Clippy is on
+ *  - Decide whether to expand the window left or right, up or down
+ *  - Call setBounds() to snap instantly
+ */
+export function repositionForChat(open: boolean) {
+  const win = getMainWindow();
+  if (!win) return;
+
+  if (!open) {
+    // Collapse back to the original Clippy-only size, re-anchor to bottom-right corner
+    const b = win.getBounds();
+    // Keep the bottom-right corner of the window stable
+    const newX = b.x + b.width  - CLIPPY_W;
+    const newY = b.y + b.height - CLIPPY_H;
+    win.setBounds({ x: newX, y: newY, width: CLIPPY_W, height: CLIPPY_H }, true);
+    return;
+  }
+
+  // Open: figure out the best direction to expand
+  const b      = win.getBounds();
+  // Clippy's bottom-right anchor (stable point as we resize)
+  const anchorX = b.x + b.width;   // right edge of window = right side of Clippy
+  const anchorY = b.y + b.height;  // bottom edge
+
+  const display = screen.getDisplayNearestPoint({ x: anchorX, y: anchorY });
+  const { x: dX, y: dY, width: dW, height: dH } = display.workArea;
+
+  // Total window dimensions when popup is open
+  const totalW = POPUP_W;           // popup is wider than Clippy, so window = popup width
+  const totalH = POPUP_H + CLIPPY_H; // popup stacks above Clippy
+
+  // Horizontal: try to anchor right edge to anchorX (expand leftward)
+  let newX = anchorX - totalW;
+  if (newX < dX + MARGIN) {
+    // Not enough room to the left – anchor left edge instead (expand rightward)
+    newX = anchorX - CLIPPY_W; // left edge = Clippy's original left edge
+    if (newX + totalW > dX + dW - MARGIN) {
+      // Still doesn't fit, clamp
+      newX = dX + dW - MARGIN - totalW;
+    }
+  }
+
+  // Vertical: try to anchor bottom edge to anchorY (expand upward)
+  let newY = anchorY - totalH;
+  if (newY < dY + MARGIN) {
+    // Not enough room above – clamp to top
+    newY = dY + MARGIN;
+  }
+
+  win.setBounds({ x: newX, y: newY, width: totalW, height: totalH }, true);
+}
+
 import contextMenu from "electron-context-menu";
 import { getLogger } from "./logger";
 
@@ -34,8 +99,8 @@ export async function createMainWindow() {
   const settings = getStateManager().store.get("settings");
 
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 640,
+    width: CLIPPY_W,
+    height: CLIPPY_H,
     transparent: true,
     hasShadow: false,
     frame: false,

@@ -17,7 +17,9 @@ body {
 .chat-popup {
   display: none;
   position: fixed;
-  width: 340px;
+  bottom: 12px;
+  right: 12px;
+  width: 336px;
   max-height: 520px;
   z-index: 100;
   animation: popIn 0.2s ease-out;
