@@ -151,6 +151,57 @@ function MiniSettings({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Smart screen-aware popup position hook ──────────────────────────────────
+function usePopupPosition() {
+  const [pos, setPos] = useState({ right: 10, bottom: 110, left: "auto" as "auto" | number });
+
+  useEffect(() => {
+    const POPUP_W = 350;
+    const POPUP_H = 540;
+    const MARGIN  = 12;
+
+    const compute = () => {
+      const winX = window.screenX;
+      const winY = window.screenY;
+      const winW = window.outerWidth;  // main Electron window width
+      const winH = window.outerHeight;
+      const screenW = screen.width;
+      const screenH = screen.height;
+
+      // Horizontal: does popup fit to the LEFT of clippy inside the window?
+      // Popup sits inside the window at right:10 → its left edge is at
+      // screenX + (winW - POPUP_W - 10). If that < 0, flip to right:auto left:10.
+      const popupScreenLeft = winX + winW - POPUP_W - MARGIN;
+      const flipH = popupScreenLeft < 0;
+
+      // Vertical: does popup fit ABOVE clippy?
+      // Popup bottom edge is at screenY + winH - 110.
+      // Its top edge would be at screenY + winH - 110 - POPUP_H.
+      // If top < 0 → flip downward (but we can't go below screen either).
+      const popupScreenTop = winY + winH - 110 - POPUP_H;
+      const flipV = popupScreenTop < 0;
+
+      setPos({
+        right:  flipH ? "auto" as any : MARGIN,
+        left:   flipH ? MARGIN : "auto",
+        bottom: flipV ? "auto" as any : 110,
+      });
+    };
+
+    compute();
+    window.addEventListener("resize",   compute);
+    window.addEventListener("focus",    compute);  // triggers when window moves
+    const id = setInterval(compute, 500); // poll while open for drag
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("focus",  compute);
+      clearInterval(id);
+    };
+  }, []);
+
+  return pos;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function ChatPopup() {
   const {
@@ -171,6 +222,7 @@ export function ChatPopup() {
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const popupPos = usePopupPosition();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -279,7 +331,10 @@ export function ChatPopup() {
   }[settings.provider || "local"];
 
   return (
-    <div className={`chat-popup ${isChatWindowOpen ? "open" : ""}`}>
+    <div
+      className={`chat-popup ${isChatWindowOpen ? "open" : ""}`}
+      style={{ right: popupPos.right, left: popupPos.left, bottom: popupPos.bottom }}
+    >
       <div className="chat-popup-inner">
 
         {/* ── Header ── */}

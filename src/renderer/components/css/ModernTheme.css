@@ -17,8 +17,6 @@ body {
 .chat-popup {
   display: none;
   position: fixed;
-  bottom: 110px;   /* sits just above Clippy */
-  right: 10px;
   width: 340px;
   max-height: 520px;
   z-index: 100;
