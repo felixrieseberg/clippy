@@ -94,6 +94,7 @@ export function Chat({ style }: ChatProps) {
     await addMessage(userMessage);
     setStreamingMessageContent("");
     setStatus("thinking");
+    setAnimationKey("");
 
     try {
       const requestUUID = crypto.randomUUID();
@@ -187,23 +188,22 @@ function filterMessageContent(content: string): {
   text: string;
   animationKey: string;
 } {
-  let text = content;
+  const trimmedContent = content.trimStart();
+  let text = content; // preserve original if no match
   let animationKey = "";
-
-  if (content === "[") {
+  
+  if (trimmedContent === "[") {
     text = "";
-  } else if (/^\[[A-Za-z]*$/m.test(content)) {
-    text = content.replace(/^\[[A-Za-z]*$/m, "").trim();
+  } else if (/^\[[A-Za-z]*$/.test(trimmedContent)) {
+    text = ""; // still typing the bracket keyword
   } else {
-    // Check for animation keys in brackets
     for (const key of ANIMATION_KEYS_BRACKETS) {
-      if (content.startsWith(key)) {
+      if (trimmedContent.startsWith(key)) {
         animationKey = key.slice(1, -1);
-        text = content.slice(key.length).trim();
+        text = trimmedContent.slice(key.length).trimStart();
         break;
       }
     }
   }
-
   return { text, animationKey };
 }

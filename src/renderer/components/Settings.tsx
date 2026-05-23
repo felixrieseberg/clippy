@@ -45,7 +45,22 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         onTabChange={(tab) => setCurrentView(`settings-${tab}` as BubbleView)}
       />
       <BubbleWindowBottomBar>
-        <button onClick={onClose}>Back to Chat</button>
+        <button
+          onClick={onClose}
+          style={{
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            border: "none",
+            borderRadius: "8px",
+            color: "white",
+            padding: "6px 12px",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: "12px",
+            marginBottom: "8px",
+          }}
+        >
+          ← Back to Chat
+        </button>
       </BubbleWindowBottomBar>
     </>
   );

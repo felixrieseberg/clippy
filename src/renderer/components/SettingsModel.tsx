@@ -97,27 +97,27 @@ export const SettingsModel: React.FC = () => {
         </label>
         
         {settings.provider === "openrouter" && (
-          <label>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <strong>OpenRouter API Key:</strong>
             <input 
               type="password" 
               value={settings.openRouterApiKey || ""} 
               onChange={(e) => clippyApi.setState("settings.openRouterApiKey", e.target.value)}
               placeholder="sk-or-v1-..."
-              style={{ marginLeft: "10px", width: "300px", padding: "5px" }}
+              style={{ width: "100%" }}
             />
           </label>
         )}
 
         {settings.provider === "xai" && (
-          <label>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <strong>xAI API Key:</strong>
             <input 
               type="password" 
               value={settings.xAiApiKey || ""} 
               onChange={(e) => clippyApi.setState("settings.xAiApiKey", e.target.value)}
               placeholder="xai-..."
-              style={{ marginLeft: "10px", width: "300px", padding: "5px" }}
+              style={{ width: "100%" }}
             />
           </label>
         )}

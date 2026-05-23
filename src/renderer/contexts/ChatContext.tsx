@@ -226,7 +226,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
 
     if (settings.selectedModel) {
-      loadModel();
+      loadModel(messagesToInitialPrompts(messages));
     } else if (!settings.selectedModel && isModelLoaded) {
       electronAi
         .destroy()
@@ -242,6 +242,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     settings.systemPrompt,
     settings.topK,
     settings.temperature,
+    // Note: Intentionally NOT including 'messages' to avoid reloading on every message
   ]);
 
   // If selectedModel is undefined or not available, set it to the first downloaded model

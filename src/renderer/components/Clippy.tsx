@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 import { ANIMATIONS, Animation } from "../clippy-animations";
 import {
@@ -22,79 +22,107 @@ export function Clippy() {
   } = useChat();
   const { enableDragDebug } = useDebugState();
   const [animation, setAnimation] = useState<Animation>(EMPTY_ANIMATION);
-  const [animationTimeoutId, setAnimationTimeoutId] = useState<
-    number | undefined
-  >(undefined);
+  const animationTimeoutRef = useRef<number | undefined>(undefined); // for play/reset
+  const idleTimerRef = useRef<number | undefined>(undefined);        // exclusively for idle loop
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
-  const playAnimation = useCallback((key: string) => {
-    if (ANIMATIONS[key]) {
-      log(`Playing animation`, { key });
-
-      if (animationTimeoutId) {
-        window.clearTimeout(animationTimeoutId);
-      }
-
-      setAnimation(ANIMATIONS[key]);
-      setAnimationTimeoutId(
-        window.setTimeout(() => {
-          setAnimation(ANIMATIONS.Default);
-        }, ANIMATIONS[key].length + 200),
-      );
-    } else {
-      log(`Animation not found`, { key });
+  const clearAnimationTimeout = useCallback(() => {
+    if (animationTimeoutRef.current !== undefined) {
+      window.clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = undefined;
     }
   }, []);
 
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current !== undefined) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = undefined;
+    }
+  }, []);
+
+  const playAnimation = useCallback((key: string) => {
+    const anim = ANIMATIONS[key as keyof typeof ANIMATIONS];
+    if (anim) {
+      log(`Playing animation`, { key });
+      clearAnimationTimeout();
+      setAnimation(anim);
+      animationTimeoutRef.current = window.setTimeout(() => {
+        animationTimeoutRef.current = undefined;
+        setAnimation(ANIMATIONS.Default);
+      }, anim.length + 200);
+    } else {
+      log(`Animation not found`, { key });
+    }
+  }, [clearAnimationTimeout]);
+
+  // Idle loop — uses its own dedicated timer so playAnimation can never kill it
+  const idleLoopRef = useRef<() => void>(() => {});
+
+  idleLoopRef.current = () => {
+    if (statusRef.current !== "idle") return;
+    const idleAnim = getRandomIdleAnimation();
+    setAnimation(idleAnim);
+    idleTimerRef.current = window.setTimeout(() => {
+      if (statusRef.current !== "idle") return;
+      setAnimation(ANIMATIONS.Default);
+      idleTimerRef.current = window.setTimeout(() => {
+        idleLoopRef.current();
+      }, WAIT_TIME);
+    }, idleAnim.length);
+  };
+
   const toggleChat = useCallback((e: React.MouseEvent) => {
     if (e.ctrlKey) {
-      // Ctrl+Click → open/focus the full settings window via IPC
       clippyApi.toggleChatWindow();
       return;
     }
     setIsChatWindowOpen(!isChatWindowOpen);
   }, [isChatWindowOpen, setIsChatWindowOpen]);
 
+  // React to status changes
   useEffect(() => {
-    const playRandomIdleAnimation = () => {
-      if (status !== "idle") return;
-
-      const randomIdleAnimation = getRandomIdleAnimation(animation);
-      setAnimation(randomIdleAnimation);
-
-      // Reset back to default after 6 seconds and schedule next animation
-      setAnimationTimeoutId(
-        window.setTimeout(() => {
-          setAnimation(ANIMATIONS.Default);
-          setAnimationTimeoutId(
-            window.setTimeout(playRandomIdleAnimation, WAIT_TIME),
-          );
-        }, randomIdleAnimation.length),
-      );
-    };
-
     if (status === "welcome" && animation === EMPTY_ANIMATION) {
       setAnimation(ANIMATIONS.Show);
       setTimeout(() => {
         setStatus("idle");
       }, ANIMATIONS.Show.length + 200);
+
     } else if (status === "idle") {
-      if (!animationTimeoutId) {
-        playRandomIdleAnimation();
-      }
+      clearAnimationTimeout();
+      setAnimation(ANIMATIONS.Default);
+      clearIdleTimer();
+      idleTimerRef.current = window.setTimeout(() => {
+        idleLoopRef.current();
+      }, WAIT_TIME);
+
+    } else if (status === "thinking") {
+      clearIdleTimer();
+      clearAnimationTimeout();
+      playAnimation("Processing");
+
+    } else if (status === "responding") {
+      clearIdleTimer();
+      clearAnimationTimeout();
+      setAnimation(ANIMATIONS.Default);
     }
+  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Clean up timeouts when component unmounts or status changes
-    return () => {
-      if (animationTimeoutId) {
-        window.clearTimeout(animationTimeoutId);
-      }
-    };
-  }, [status]);
-
+  // Play AI-chosen animation when animationKey changes
   useEffect(() => {
-    log(`New animation key`, { animationKey });
-    playAnimation(animationKey);
+    if (!animationKey) return;
+    const key = animationKey.split(":")[0];
+    log(`New animation key`, { key });
+    playAnimation(key); // safe — only clears animationTimeoutRef, never idleTimerRef
   }, [animationKey, playAnimation]);
+
+  // Cleanup on unmount only
+  useEffect(() => {
+    return () => {
+      clearAnimationTimeout();
+      clearIdleTimer();
+    };
+  }, [clearAnimationTimeout, clearIdleTimer]);
 
   return (
     <div onContextMenu={clippyApi.popupAppMenu}>
