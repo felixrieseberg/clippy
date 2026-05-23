@@ -97,7 +97,7 @@ export function Clippy() {
   }, [animationKey, playAnimation]);
 
   return (
-    <div>
+    <div onContextMenu={clippyApi.popupAppMenu}>
       <div
         className="app-drag"
         style={{
