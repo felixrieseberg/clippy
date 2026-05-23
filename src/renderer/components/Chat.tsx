@@ -6,18 +6,74 @@ import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import { useChat } from "../contexts/ChatContext";
 import { electronAi } from "../clippyApi";
 
+import { useSharedState } from "../contexts/SharedStateContext";
+
+async function* streamCloudAPI(provider: string, apiKey: string, message: string, systemPrompt?: string) {
+  const url = provider === "openrouter" 
+    ? "https://openrouter.ai/api/v1/chat/completions" 
+    : "https://api.x.ai/v1/chat/completions";
+  
+  const model = provider === "openrouter" ? "meta-llama/llama-3-8b-instruct:free" : "grok-beta";
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      ...(provider === "openrouter" && { "HTTP-Referer": "http://localhost:5173", "X-Title": "Clippy" })
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+        { role: "user", content: message }
+      ],
+      stream: true
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.statusText}`);
+  }
+
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  if (!reader) return;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split("\n").filter(line => line.trim() !== "");
+    for (const line of lines) {
+      if (line.replace(/^data: /, "") === "[DONE]") {
+        return;
+      }
+      if (line.startsWith("data: ")) {
+        try {
+          const parsed = JSON.parse(line.replace(/^data: /, ""));
+          if (parsed.choices?.[0]?.delta?.content) {
+            yield parsed.choices[0].delta.content;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  }
+}
+
 export type ChatProps = {
   style?: React.CSSProperties;
 };
 
 export function Chat({ style }: ChatProps) {
-  const { setAnimationKey, setStatus, status, messages, addMessage } =
-    useChat();
-  const [streamingMessageContent, setStreamingMessageContent] =
-    useState<string>("");
-  const [lastRequestUUID, setLastRequestUUID] = useState<string>(
-    crypto.randomUUID(),
-  );
+  const { setAnimationKey, setStatus, status, messages, addMessage } = useChat();
+  const { settings } = useSharedState();
+  const [streamingMessageContent, setStreamingMessageContent] = useState<string>("");
+  const [lastRequestUUID, setLastRequestUUID] = useState<string>(crypto.randomUUID());
 
   const handleAbortMessage = () => {
     electronAi.abortRequest(lastRequestUUID);
@@ -43,9 +99,14 @@ export function Chat({ style }: ChatProps) {
       const requestUUID = crypto.randomUUID();
       setLastRequestUUID(requestUUID);
 
-      const response = await window.electronAi.promptStreaming(message, {
-        requestUUID,
-      });
+      let response;
+      if (settings.provider === "openrouter" && settings.openRouterApiKey) {
+        response = streamCloudAPI("openrouter", settings.openRouterApiKey, message, settings.systemPrompt);
+      } else if (settings.provider === "xai" && settings.xAiApiKey) {
+        response = streamCloudAPI("xai", settings.xAiApiKey, message, settings.systemPrompt);
+      } else {
+        response = await window.electronAi.promptStreaming(message, { requestUUID });
+      }
 
       let fullContent = "";
       let filteredContent = "";
@@ -57,9 +118,7 @@ export function Chat({ style }: ChatProps) {
         }
 
         if (!hasSetAnimationKey) {
-          const { text, animationKey } = filterMessageContent(
-            fullContent + chunk,
-          );
+          const { text, animationKey } = filterMessageContent(fullContent + chunk);
 
           filteredContent = text;
           fullContent = fullContent + chunk;
@@ -75,8 +134,6 @@ export function Chat({ style }: ChatProps) {
         setStreamingMessageContent(filteredContent);
       }
 
-      // Once streaming is complete, add the full message to the messages array
-      // and clear the streaming message
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         content: filteredContent,
@@ -87,6 +144,13 @@ export function Chat({ style }: ChatProps) {
       addMessage(assistantMessage);
     } catch (error) {
       console.error(error);
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        content: "Oops! Something went wrong communicating with the API.",
+        sender: "clippy",
+        createdAt: Date.now(),
+      };
+      addMessage(errorMessage);
     } finally {
       setStreamingMessageContent("");
       setStatus("idle");
