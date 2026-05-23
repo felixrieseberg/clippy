@@ -16,8 +16,7 @@ export type ClippyApi = {
   toggleChatWindow: () => Promise<void>;
   minimizeChatWindow: () => Promise<void>;
   maximizeChatWindow: () => Promise<void>;
-  popupChatOpen: () => Promise<void>;
-  popupChatClose: () => Promise<void>;
+  setWindowBounds: (bounds: { x?: number; y?: number; width?: number; height?: number }) => Promise<void>;
   onSetBubbleView: (callback: (bubbleView: BubbleView) => void) => void;
   offSetBubbleView: () => void;
   popupAppMenu: () => void;

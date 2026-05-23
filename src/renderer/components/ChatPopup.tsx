@@ -152,7 +152,7 @@ function MiniSettings({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function ChatPopup() {
+export function ChatPopup({ layout }: { layout: "right" | "left" | "top-right" | "top-left" }) {
   const {
     isChatWindowOpen,
     setIsChatWindowOpen,
@@ -171,15 +171,6 @@ export function ChatPopup() {
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Tell the main process to resize/reposition the window on open/close
-  useEffect(() => {
-    if (isChatWindowOpen) {
-      clippyApi.popupChatOpen();
-    } else {
-      clippyApi.popupChatClose();
-    }
-  }, [isChatWindowOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -289,7 +280,7 @@ export function ChatPopup() {
 
   return (
     <div
-      className={`chat-popup ${isChatWindowOpen ? "open" : ""}`}
+      className={`chat-popup ${isChatWindowOpen ? "open" : ""} layout-${layout}`}
     >
       <div className="chat-popup-inner">
 

@@ -52,16 +52,41 @@ body {
   color: #eee;
 }
 
-/* Speech-bubble tail pointing toward Clippy (bottom-right) */
+/* Speech-bubble tails pointing toward Clippy */
 .chat-popup-inner::after {
   content: "";
   position: absolute;
-  bottom: -12px;
-  right: 28px;
   width: 0; height: 0;
   border-left: 12px solid transparent;
   border-right: 12px solid transparent;
+}
+
+/* Default (bottom-right) */
+.layout-right .chat-popup-inner::after {
+  bottom: -12px;
+  right: 28px;
   border-top: 12px solid rgba(20, 20, 30, 0.88);
+}
+
+/* Bottom-left */
+.layout-left .chat-popup-inner::after {
+  bottom: -12px;
+  left: 28px;
+  border-top: 12px solid rgba(20, 20, 30, 0.88);
+}
+
+/* Top-right */
+.layout-top-right .chat-popup-inner::after {
+  top: -12px;
+  right: 28px;
+  border-bottom: 12px solid rgba(20, 20, 30, 0.88);
+}
+
+/* Top-left */
+.layout-top-left .chat-popup-inner::after {
+  top: -12px;
+  left: 28px;
+  border-bottom: 12px solid rgba(20, 20, 30, 0.88);
 }
 
 /* ---------- Title bar ---------- */
