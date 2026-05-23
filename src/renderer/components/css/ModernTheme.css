@@ -1,16 +1,40 @@
 /* Modern Chat Widget Styles */
+body {
+  background: transparent !important;
+}
+
 .modern-bubble {
-  background: rgba(30, 30, 30, 0.7);
+  background: rgba(30, 30, 30, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-radius: 16px;
+  border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   color: white;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Create space for the bubble tail */
+  margin: 10px;
+  margin-left: 20px;
+  position: relative;
+  height: calc(100% - 20px);
+  box-sizing: border-box;
+}
+
+/* The Speech Bubble Tail pointing left */
+.modern-bubble::before {
+  content: "";
+  position: absolute;
+  left: -15px;
+  bottom: 30px; /* Points near the bottom where Clippy might be */
+  border-width: 15px 15px 15px 0;
+  border-style: solid;
+  border-color: transparent rgba(30, 30, 30, 0.85) transparent transparent;
+  display: block;
+  width: 0;
+  height: 0;
 }
 
 .modern-title-bar {
@@ -20,6 +44,7 @@
   padding: 16px;
   background: rgba(255, 255, 255, 0.05);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px 20px 0 0;
   -webkit-app-region: drag;
 }
 

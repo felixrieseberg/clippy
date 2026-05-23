@@ -133,6 +133,7 @@ export function setupWindowOpenHandler(browserWindow: BrowserWindow) {
       action: "allow",
       overrideBrowserWindowOptions: {
         frame: false,
+        transparent: true,
         x: newWindowPosition?.x,
         y: newWindowPosition?.y,
         roundedCorners: false,
