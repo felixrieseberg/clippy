@@ -1,4 +1,17 @@
 import { BrowserWindow, shell, screen, app } from "electron";
+
+const CLIPPY_W = 125;
+const CLIPPY_H = 100;
+const POPUP_W  = 360;
+const POPUP_H  = 540;
+const MARGIN   = 12;
+
+export function setWindowBounds(bounds: { x?: number; y?: number; width?: number; height?: number }) {
+  const win = getMainWindow();
+  if (!win) return;
+  win.setBounds(bounds, true);
+}
+
 import contextMenu from "electron-context-menu";
 import { getLogger } from "./logger";
 
@@ -34,8 +47,8 @@ export async function createMainWindow() {
   const settings = getStateManager().store.get("settings");
 
   mainWindow = new BrowserWindow({
-    width: 125,
-    height: 100,
+    width: CLIPPY_W,
+    height: CLIPPY_H,
     transparent: true,
     hasShadow: false,
     frame: false,
@@ -133,6 +146,7 @@ export function setupWindowOpenHandler(browserWindow: BrowserWindow) {
       action: "allow",
       overrideBrowserWindowOptions: {
         frame: false,
+        transparent: true,
         x: newWindowPosition?.x,
         y: newWindowPosition?.y,
         roundedCorners: false,
