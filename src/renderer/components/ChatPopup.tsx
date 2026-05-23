@@ -4,7 +4,7 @@ import "./css/ModernTheme.css";
 
 import { useChat } from "../contexts/ChatContext";
 import { useSharedState } from "../contexts/SharedStateContext";
-import { electronAi } from "../clippyApi";
+import { electronAi, clippyApi } from "../clippyApi";
 import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import questionIcon from "../images/icons/question.png";
 import defaultClippy from "../images/animations/Default.png";
@@ -72,7 +72,7 @@ async function* streamCloudAPI(
   }
 }
 
-// ─── Animation key filter (same logic as original Chat.tsx) ──────────────────
+// ─── Animation key filter ─────────────────────────────────────────────────────
 function filterMessageContent(content: string): {
   text: string;
   animationKey: string;
@@ -95,6 +95,62 @@ function filterMessageContent(content: string): {
   return { text, animationKey };
 }
 
+// ─── Inline mini-settings panel ───────────────────────────────────────────────
+function MiniSettings({ onClose }: { onClose: () => void }) {
+  const { settings } = useSharedState();
+
+  const provider = settings.provider || "local";
+
+  return (
+    <div className="mini-settings">
+      <div className="mini-settings-header">
+        <span>⚙ Quick Settings</span>
+        <button className="mini-settings-close" onClick={onClose}>✕</button>
+      </div>
+
+      <label className="mini-settings-row">
+        <span>AI Provider</span>
+        <select
+          value={provider}
+          onChange={(e) => clippyApi.setState("settings.provider", e.target.value)}
+        >
+          <option value="local">Local (Llama.cpp)</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="xai">xAI (Grok)</option>
+        </select>
+      </label>
+
+      {provider === "openrouter" && (
+        <label className="mini-settings-row">
+          <span>OpenRouter Key</span>
+          <input
+            type="password"
+            value={settings.openRouterApiKey || ""}
+            onChange={(e) => clippyApi.setState("settings.openRouterApiKey", e.target.value)}
+            placeholder="sk-or-v1-..."
+          />
+        </label>
+      )}
+
+      {provider === "xai" && (
+        <label className="mini-settings-row">
+          <span>xAI Key</span>
+          <input
+            type="password"
+            value={settings.xAiApiKey || ""}
+            onChange={(e) => clippyApi.setState("settings.xAiApiKey", e.target.value)}
+            placeholder="xai-..."
+          />
+        </label>
+      )}
+
+      <p className="mini-settings-hint">
+        💡 Ctrl+Click on Clippy for full settings
+      </p>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function ChatPopup() {
   const {
@@ -108,30 +164,26 @@ export function ChatPopup() {
     isModelLoaded,
   } = useChat();
   const { settings } = useSharedState();
+
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState("");
   const [lastUUID, setLastUUID] = useState(crypto.randomUUID());
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streaming]);
 
-  // Focus textarea when popup opens
   useEffect(() => {
-    if (isChatWindowOpen) {
+    if (isChatWindowOpen && !showSettings) {
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
-  }, [isChatWindowOpen]);
+  }, [isChatWindowOpen, showSettings]);
 
-  // Abort running request
-  const handleAbort = () => {
-    electronAi.abortRequest(lastUUID);
-  };
+  const handleAbort = () => electronAi.abortRequest(lastUUID);
 
-  // Send message
   const handleSend = async () => {
     const msg = input.trim();
     if (!msg || status !== "idle") return;
@@ -178,7 +230,6 @@ export function ChatPopup() {
 
       for await (const chunk of response) {
         if (full === "") setStatus("responding");
-
         if (!hasAnim) {
           const { text, animationKey } = filterMessageContent(full + chunk);
           filtered = text;
@@ -221,17 +272,31 @@ export function ChatPopup() {
 
   const isDisabled = !isModelLoaded && settings.provider === "local";
   const isBusy = status !== "idle";
+  const providerLabel = {
+    local: "🖥 Local",
+    openrouter: "🌐 OpenRouter",
+    xai: "🤖 xAI",
+  }[settings.provider || "local"];
 
   return (
     <div className={`chat-popup ${isChatWindowOpen ? "open" : ""}`}>
       <div className="chat-popup-inner">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="chat-header">
           <div className="chat-header-title">
             <span className="dot" />
             Chat with Clippy
+            <span className="provider-badge">{providerLabel}</span>
           </div>
           <div className="chat-header-actions">
+            <button
+              className={showSettings ? "chat-settings-btn active" : "chat-settings-btn"}
+              onClick={() => setShowSettings((s) => !s)}
+              title="Quick settings"
+            >
+              ⚙
+            </button>
             <button
               className="chat-close-btn"
               onClick={() => setIsChatWindowOpen(false)}
@@ -241,88 +306,86 @@ export function ChatPopup() {
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="chat-messages">
-          {messages.map((m) => (
-            <div key={m.id} className={`msg-row ${m.sender}`}>
-              <img
-                className="msg-avatar"
-                src={m.sender === "user" ? questionIcon : defaultClippy}
-                alt={m.sender}
-              />
-              <div className="msg-bubble">
-                <ReactMarkdown
-                  components={{
-                    a: ({ node, ...props }) => (
-                      <a target="_blank" rel="noopener noreferrer" {...props} />
-                    ),
-                  }}
-                >
-                  {m.content}
-                </ReactMarkdown>
-              </div>
-            </div>
-          ))}
+        {/* ── Mini settings panel (slides in) ── */}
+        {showSettings && (
+          <MiniSettings onClose={() => setShowSettings(false)} />
+        )}
 
-          {/* Streaming response */}
-          {status === "responding" && streaming && (
-            <div className="msg-row clippy">
-              <img
-                className="msg-avatar"
-                src={defaultClippy}
-                alt="Clippy"
-              />
-              <div className="msg-bubble">
-                <ReactMarkdown>{streaming}</ReactMarkdown>
-              </div>
-            </div>
-          )}
-
-          {/* Thinking dots */}
-          {status === "thinking" && (
-            <div className="msg-row clippy">
-              <img
-                className="msg-avatar"
-                src={defaultClippy}
-                alt="Clippy"
-              />
-              <div className="msg-bubble">
-                <div className="typing-dots">
-                  <span /><span /><span />
+        {/* ── Messages ── */}
+        {!showSettings && (
+          <>
+            <div className="chat-messages">
+              {messages.map((m) => (
+                <div key={m.id} className={`msg-row ${m.sender}`}>
+                  <img
+                    className="msg-avatar"
+                    src={m.sender === "user" ? questionIcon : defaultClippy}
+                    alt={m.sender}
+                  />
+                  <div className="msg-bubble">
+                    <ReactMarkdown
+                      components={{
+                        a: ({ node, ...props }) => (
+                          <a target="_blank" rel="noopener noreferrer" {...props} />
+                        ),
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-              </div>
+              ))}
+
+              {status === "responding" && streaming && (
+                <div className="msg-row clippy">
+                  <img className="msg-avatar" src={defaultClippy} alt="Clippy" />
+                  <div className="msg-bubble">
+                    <ReactMarkdown>{streaming}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
+              {status === "thinking" && (
+                <div className="msg-row clippy">
+                  <img className="msg-avatar" src={defaultClippy} alt="Clippy" />
+                  <div className="msg-bubble">
+                    <div className="typing-dots">
+                      <span /><span /><span />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
-          )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="chat-input-area">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isDisabled || isBusy}
-            placeholder={
-              isDisabled
-                ? "Waiting for model to load..."
-                : isBusy
-                ? "Clippy is thinking..."
-                : "Type a message…"
-            }
-          />
-          <button
-            className="chat-send-btn"
-            disabled={isDisabled}
-            onClick={isBusy ? handleAbort : handleSend}
-            title={isBusy ? "Abort" : "Send"}
-          >
-            {isBusy ? "■" : "➤"}
-          </button>
-        </div>
+            {/* ── Input ── */}
+            <div className="chat-input-area">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isDisabled || isBusy}
+                placeholder={
+                  isDisabled
+                    ? "Waiting for model to load…"
+                    : isBusy
+                    ? "Clippy is thinking…"
+                    : "Type a message…"
+                }
+              />
+              <button
+                className="chat-send-btn"
+                disabled={isDisabled}
+                onClick={isBusy ? handleAbort : handleSend}
+                title={isBusy ? "Abort" : "Send"}
+              >
+                {isBusy ? "■" : "➤"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

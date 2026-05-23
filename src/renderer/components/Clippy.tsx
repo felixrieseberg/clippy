@@ -8,6 +8,7 @@ import {
 import { useChat } from "../contexts/ChatContext";
 import { log } from "../logging";
 import { useDebugState } from "../contexts/DebugContext";
+import { clippyApi } from "../clippyApi";
 
 const WAIT_TIME = 6000;
 
@@ -44,7 +45,13 @@ export function Clippy() {
     }
   }, []);
 
-  const toggleChat = useCallback(() => {
+  const toggleChat = useCallback((e: React.MouseEvent) => {
+    if (e.ctrlKey) {
+      // Ctrl+Click → open full settings window
+      clippyApi.maximizeChatWindow();
+      window.open("", "", "width=450,height=650,positionNextToParent");
+      return;
+    }
     setIsChatWindowOpen(!isChatWindowOpen);
   }, [isChatWindowOpen, setIsChatWindowOpen]);
 
@@ -116,6 +123,7 @@ export function Clippy() {
             cursor: "help",
           }}
           onClick={toggleChat}
+          title="Click to chat • Ctrl+Click for settings"
         ></div>
       </div>
       <img
