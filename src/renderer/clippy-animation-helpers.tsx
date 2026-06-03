@@ -40,3 +40,34 @@ export function getRandomAnimation(keys: string[], current?: Animation) {
 export function getRandomIdleAnimation(current?: Animation) {
   return getRandomAnimation(IDLE_ANIMATION_KEYS, current);
 }
+
+/**
+ * Pull the leading [Animation] keyword off a model response, returning the
+ * keyword (without brackets) and the remaining text.
+ *
+ * @param content - The (possibly partial) model output
+ */
+export function parseAnimation(content: string): {
+  text: string;
+  animationKey: string;
+} {
+  let text = content;
+  let animationKey = "";
+
+  if (content === "[") {
+    text = "";
+  } else if (/^\[[A-Za-z]*$/m.test(content)) {
+    // A partial keyword is still streaming in — hide it for now.
+    text = content.replace(/^\[[A-Za-z]*$/m, "").trim();
+  } else {
+    for (const key of ANIMATION_KEYS_BRACKETS) {
+      if (content.startsWith(key)) {
+        animationKey = key.slice(1, -1);
+        text = content.slice(key.length).trim();
+        break;
+      }
+    }
+  }
+
+  return { text, animationKey };
+}

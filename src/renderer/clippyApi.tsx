@@ -9,6 +9,7 @@ import {
 import { DebugState } from "../debugState";
 
 import type { BubbleView } from "./contexts/BubbleViewContext";
+import type { RoastContext } from "../ipc-messages";
 import { Data } from "electron";
 
 export type ClippyApi = {
@@ -52,6 +53,10 @@ export type ClippyApi = {
   deleteAllChats: () => Promise<void>;
   onNewChat: (callback: () => void) => void;
   offNewChat: () => void;
+  // Roaster
+  onRoastContext: (callback: (context: RoastContext) => void) => void;
+  offRoastContext: () => void;
+  roastNow: () => Promise<void>;
   // Clipboard
   clipboardWrite: (data: Data) => Promise<void>;
 };

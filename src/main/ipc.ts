@@ -5,6 +5,7 @@ import {
   minimizeChatWindow,
 } from "./windows";
 import { IpcMessages } from "../ipc-messages";
+import { roastNow } from "./roaster";
 import { getModelManager } from "./models";
 import { getStateManager } from "./state";
 import { getChatManager } from "./chats";
@@ -21,6 +22,9 @@ export function setupIpcListeners() {
   ipcMain.handle(IpcMessages.MINIMIZE_CHAT_WINDOW, () => minimizeChatWindow());
   ipcMain.handle(IpcMessages.MAXIMIZE_CHAT_WINDOW, () => maximizeChatWindow());
   ipcMain.handle(IpcMessages.POPUP_APP_MENU, () => getMainAppMenu().popup());
+
+  // Roaster
+  ipcMain.handle(IpcMessages.ROAST_NOW, () => roastNow());
 
   // App
   ipcMain.handle(IpcMessages.APP_CHECK_FOR_UPDATES, () => checkForUpdates());

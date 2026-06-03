@@ -2,7 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, Data, ipcRenderer } from "electron";
-import { IpcMessages } from "../ipc-messages";
+import { IpcMessages, RoastContext } from "../ipc-messages";
 import type { SharedState } from "../sharedState";
 
 import type { ClippyApi } from "./clippyApi";
@@ -91,6 +91,17 @@ const clippyApi: ClippyApi = {
   offNewChat: () => {
     ipcRenderer.removeAllListeners(IpcMessages.CHAT_NEW_CHAT);
   },
+
+  // Roaster
+  onRoastContext: (callback: (context: RoastContext) => void) => {
+    ipcRenderer.on(IpcMessages.ROAST_CONTEXT, (_event, context) =>
+      callback(context),
+    );
+  },
+  offRoastContext: () => {
+    ipcRenderer.removeAllListeners(IpcMessages.ROAST_CONTEXT);
+  },
+  roastNow: () => ipcRenderer.invoke(IpcMessages.ROAST_NOW),
 
   // App
   getVersions: () => ipcRenderer.invoke(IpcMessages.APP_GET_VERSIONS),

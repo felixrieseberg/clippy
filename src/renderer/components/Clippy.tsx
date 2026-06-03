@@ -6,19 +6,14 @@ import {
   getRandomIdleAnimation,
 } from "../clippy-animation-helpers";
 import { useChat } from "../contexts/ChatContext";
+import { clippyApi } from "../clippyApi";
 import { log } from "../logging";
 import { useDebugState } from "../contexts/DebugContext";
 
 const WAIT_TIME = 6000;
 
 export function Clippy() {
-  const {
-    animationKey,
-    status,
-    setStatus,
-    setIsChatWindowOpen,
-    isChatWindowOpen,
-  } = useChat();
+  const { animationKey, status, setStatus } = useChat();
   const { enableDragDebug } = useDebugState();
   const [animation, setAnimation] = useState<Animation>(EMPTY_ANIMATION);
   const [animationTimeoutId, setAnimationTimeoutId] = useState<
@@ -44,9 +39,10 @@ export function Clippy() {
     }
   }, []);
 
-  const toggleChat = useCallback(() => {
-    setIsChatWindowOpen(!isChatWindowOpen);
-  }, [isChatWindowOpen, setIsChatWindowOpen]);
+  const handleClick = useCallback(() => {
+    // Poke him and he'll mutter something about whatever you were just doing.
+    void clippyApi.roastNow();
+  }, []);
 
   useEffect(() => {
     const playRandomIdleAnimation = () => {
@@ -115,7 +111,7 @@ export function Clippy() {
             top: "2px",
             cursor: "help",
           }}
-          onClick={toggleChat}
+          onClick={handleClick}
         ></div>
       </div>
       <img

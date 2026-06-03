@@ -19,8 +19,7 @@ export const SettingsAppearance: React.FC = () => {
       defaultFont: DEFAULT_SETTINGS.defaultFont,
       defaultFontSize: DEFAULT_SETTINGS.defaultFontSize,
       clippyAlwaysOnTop: DEFAULT_SETTINGS.clippyAlwaysOnTop,
-      chatAlwaysOnTop: DEFAULT_SETTINGS.chatAlwaysOnTop,
-      alwaysOpenChat: DEFAULT_SETTINGS.alwaysOpenChat,
+      soberMode: DEFAULT_SETTINGS.soberMode,
     };
 
     for (const key in defaultAppareanceSettings) {
@@ -44,19 +43,11 @@ export const SettingsAppearance: React.FC = () => {
           }}
         />
         <Checkbox
-          id="chatAlwaysOnTop"
-          label="Keep chat always on top of all other windows"
-          checked={settings.chatAlwaysOnTop}
+          id="soberMode"
+          label="Sober Mode (Clippy keeps his unsolicited opinions to himself)"
+          checked={settings.soberMode}
           onChange={(checked) => {
-            clippyApi.setState("settings.chatAlwaysOnTop", checked);
-          }}
-        />
-        <Checkbox
-          id="alwaysOpenChat"
-          label="Always open chat when Clippy starts"
-          checked={settings.alwaysOpenChat}
-          onChange={(checked) => {
-            clippyApi.setState("settings.alwaysOpenChat", checked);
+            clippyApi.setState("settings.soberMode", checked);
           }}
         />
       </fieldset>

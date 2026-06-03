@@ -33,9 +33,18 @@ export async function createMainWindow() {
 
   const settings = getStateManager().store.get("settings");
 
+  // Park Clippy in the bottom-right corner of the primary display, where a
+  // proper desktop assistant lives, rather than letting Electron center him.
+  const WIDTH = 125;
+  const HEIGHT = 100;
+  const MARGIN = 20;
+  const { workArea } = screen.getPrimaryDisplay();
+
   mainWindow = new BrowserWindow({
-    width: 125,
-    height: 100,
+    width: WIDTH,
+    height: HEIGHT,
+    x: workArea.x + workArea.width - WIDTH - MARGIN,
+    y: workArea.y + workArea.height - HEIGHT - MARGIN,
     transparent: true,
     hasShadow: false,
     frame: false,
@@ -136,8 +145,14 @@ export function setupWindowOpenHandler(browserWindow: BrowserWindow) {
         x: newWindowPosition?.x,
         y: newWindowPosition?.y,
         roundedCorners: false,
-        minHeight: 400,
-        minWidth: 400,
+        // Transparent + no shadow so the yellow speech balloon (and its tail)
+        // float over the desktop instead of sitting in a default window box.
+        transparent: true,
+        hasShadow: false,
+        backgroundColor: "#00000000",
+        // Small so the speech bubble can be small; Settings resizes itself up.
+        minHeight: 120,
+        minWidth: 200,
         alwaysOnTop: getStateManager().store.get("settings").chatAlwaysOnTop,
         parent: browserWindow,
       },
@@ -168,7 +183,8 @@ export function getPopoverWindowPosition(
 ): { x: number; y: number } {
   const parentBounds = browserWindow.getBounds();
   const { width, height } = size;
-  const SPACING = 50; // Distance between windows
+  const SPACING = 12; // Horizontal gap to Clippy — small so the bubble hugs him
+  const UP_OFFSET = 70; // Lift the bubble up toward Clippy's head
 
   // Get the current display
   const displays = screen.getAllDisplays();
@@ -190,8 +206,8 @@ export function getPopoverWindowPosition(
     x = leftPosition;
   }
 
-  // Try to align the bottom of the new window with the parent window
-  let y = parentBounds.y + parentBounds.height - height;
+  // Align near the bottom of the parent, then lift up toward Clippy's head.
+  let y = parentBounds.y + parentBounds.height - height - UP_OFFSET;
 
   // Check if the window would be too high (off-screen at the top)
   if (y < display.bounds.y) {
@@ -239,8 +255,9 @@ export function toggleChatWindow() {
     const position = getPopoverWindowPosition(mainWindow, { width, height });
 
     chatWindow.setPosition(position.x, position.y);
-    chatWindow.show();
-    chatWindow.focus();
+    // showInactive (not show + focus) so the speech bubble appearing every few
+    // seconds doesn't yank focus away from whatever the user is working in.
+    chatWindow.showInactive();
   }
 }
 

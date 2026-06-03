@@ -1,110 +1,68 @@
-import { useCallback, useState } from "react";
+import { useContext, useEffect } from "react";
 
-import { clippyApi } from "../clippyApi";
-import { Chat } from "./Chat";
 import { Settings } from "./Settings";
+import { SpeechBubble } from "./SpeechBubble";
 import { useBubbleView } from "../contexts/BubbleViewContext";
-import { Chats } from "./Chats";
+import { useChat } from "../contexts/ChatContext";
+import { WindowContext } from "../contexts/WindowContext";
+
+const BUBBLE_SIZE = { width: 340, height: 200 };
+const SETTINGS_SIZE = { width: 450, height: 650 };
 
 export function Bubble() {
   const { currentView, setCurrentView } = useBubbleView();
-  const [isMaximized, setIsMaximized] = useState(false);
+  const { spokenText, setIsBubbleOpen } = useChat();
+  const { currentWindow } = useContext(WindowContext);
 
-  const containerStyle = {
-    width: "calc(100% - 6px)",
-    height: "calc(100% - 6px)",
-    margin: 0,
-    overflow: "hidden",
-  };
+  const isSettings = currentView.startsWith("settings");
 
-  const chatStyle = {
-    padding: "15px",
-    display: "flex",
-    flexDirection: "column" as const,
-    justifyContent: "flex-end",
-    minHeight: "calc(100% - 35px)",
-    overflowAnchor: "none" as const,
-  };
-
-  const scrollAnchoredAtBottomStyle = {
-    display: "flex",
-    flexDirection: "column-reverse" as const,
-  };
-
-  let content = null;
-
-  if (currentView === "chat") {
-    content = <Chat style={chatStyle} />;
-  } else if (currentView.startsWith("settings")) {
-    content = <Settings onClose={() => setCurrentView("chat")} />;
-  } else if (currentView === "chats") {
-    content = <Chats onClose={() => setCurrentView("chat")} />;
-  }
-
-  const handleSettingsClick = useCallback(() => {
-    if (currentView.startsWith("settings")) {
-      setCurrentView("chat");
-    } else {
-      setCurrentView("settings");
+  // Grow the window for settings, shrink back down for the speech bubble.
+  useEffect(() => {
+    if (!currentWindow || currentWindow === window) {
+      return;
     }
-  }, [setCurrentView, currentView]);
 
-  const handleChatsClick = useCallback(() => {
-    if (currentView === "chats") {
-      setCurrentView("chat");
-    } else {
-      setCurrentView("chats");
+    const size = isSettings ? SETTINGS_SIZE : BUBBLE_SIZE;
+    try {
+      currentWindow.resizeTo(size.width, size.height);
+    } catch {
+      // Resizing a not-yet-ready popup can throw; harmless.
     }
-  }, [setCurrentView, currentView]);
+  }, [isSettings, currentWindow]);
 
-  return (
-    <div className="bubble-container window" style={containerStyle}>
-      <div className="app-drag title-bar">
-        <div className="title-bar-text">Chat with Clippy</div>
-        <div className="title-bar-controls app-no-drag">
-          <button
-            style={{
-              marginRight: "8px",
-              paddingLeft: "8px",
-              paddingRight: "8px",
-            }}
-            onClick={handleChatsClick}
-          >
-            Chats
-          </button>
-          <button
-            style={{
-              marginRight: "8px",
-              paddingLeft: "8px",
-              paddingRight: "8px",
-            }}
-            onClick={handleSettingsClick}
-          >
-            Settings
-          </button>
-          <button
-            aria-label="Minimize"
-            onClick={() => clippyApi.minimizeChatWindow()}
-          ></button>
-          <button
-            aria-label={isMaximized ? "Restore" : "Maximize"}
-            onClick={() => {
-              clippyApi.maximizeChatWindow();
-              setIsMaximized(!isMaximized);
-            }}
-          ></button>
-          <button
-            aria-label="Close"
-            onClick={() => clippyApi.toggleChatWindow()}
-          ></button>
+  const closeSettings = () => {
+    setCurrentView("speech");
+    setIsBubbleOpen(false);
+  };
+
+  if (isSettings) {
+    return (
+      <div
+        className="window"
+        style={{
+          width: "100%",
+          height: "100%",
+          margin: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <div className="app-drag title-bar">
+          <div className="title-bar-text">Clippy Settings</div>
+          <div className="title-bar-controls app-no-drag">
+            <button aria-label="Close" onClick={closeSettings}></button>
+          </div>
+        </div>
+        <div
+          className="window-body"
+          style={{ flex: 1, overflow: "auto", margin: 0 }}
+        >
+          <Settings onClose={closeSettings} />
         </div>
       </div>
-      <div
-        className="window-content"
-        style={currentView === "chat" ? scrollAnchoredAtBottomStyle : {}}
-      >
-        {content}
-      </div>
-    </div>
-  );
+    );
+  }
+
+  return <SpeechBubble text={spokenText} />;
 }

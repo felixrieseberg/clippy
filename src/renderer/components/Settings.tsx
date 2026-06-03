@@ -45,7 +45,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         onTabChange={(tab) => setCurrentView(`settings-${tab}` as BubbleView)}
       />
       <BubbleWindowBottomBar>
-        <button onClick={onClose}>Back to Chat</button>
+        <button onClick={onClose}>Close</button>
       </BubbleWindowBottomBar>
     </>
   );

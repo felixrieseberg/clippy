@@ -6,12 +6,15 @@ if (shouldQuit) {
 }
 
 import { app, BrowserWindow } from "electron";
+// Let Clippy's pop sound play on a timer without a preceding user gesture.
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 import { loadElectronLlm } from "@electron/llm";
 import { setupIpcListeners } from "./ipc";
 import { createMainWindow, setupWindowListener } from "./windows";
 import { getModelManager } from "./models";
 import { setupAutoUpdater } from "./update";
 import { setupAppMenu } from "./menu";
+import { startRoaster } from "./roaster";
 
 async function onReady() {
   console.info(`Welcome to Clippy v${app.getVersion()}`);
@@ -22,6 +25,7 @@ async function onReady() {
   setupIpcListeners();
   setupWindowListener();
   await createMainWindow();
+  startRoaster();
 }
 
 async function loadLlm() {

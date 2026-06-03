@@ -11,8 +11,9 @@ import { FileTransport } from "electron-log";
 import { getStateManager } from "./state";
 
 import type { BubbleView } from "../renderer/contexts/BubbleViewContext";
-import { getMainWindow, toggleChatWindow } from "./windows";
+import { getMainWindow } from "./windows";
 import { IpcMessages } from "../ipc-messages";
+import { roastNow } from "./roaster";
 import { checkForUpdates } from "./update";
 import {
   closeInspector,
@@ -93,26 +94,23 @@ export function getMainAppMenu(): Menu {
   );
   windowMenu?.submenu?.append(
     new MenuItem({
-      label: "Always Show Chat Window on Top",
-      type: "checkbox",
-      checked: getStateManager().store.get("settings").chatAlwaysOnTop,
-      click: (menuItem) => {
-        getStateManager().store.set(
-          "settings.chatAlwaysOnTop",
-          menuItem.checked,
-        );
-      },
-    }),
-  );
-  windowMenu?.submenu?.append(
-    new MenuItem({
       type: "separator",
     }),
   );
   windowMenu?.submenu?.append(
     new MenuItem({
-      label: "Toggle Chat Window",
-      click: () => toggleChatWindow(),
+      label: "Sober Mode (shut him up)",
+      type: "checkbox",
+      checked: getStateManager().store.get("settings").soberMode,
+      click: (menuItem) => {
+        getStateManager().store.set("settings.soberMode", menuItem.checked);
+      },
+    }),
+  );
+  windowMenu?.submenu?.append(
+    new MenuItem({
+      label: "Say Something",
+      click: () => roastNow(),
       accelerator: "Cmd+`",
     }),
   );
@@ -121,16 +119,7 @@ export function getMainAppMenu(): Menu {
 }
 
 function getFileMenu(): MenuItemConstructorOptions[] {
-  const template: MenuItemConstructorOptions[] = [
-    {
-      label: "New Chat",
-      accelerator: "CmdOrCtrl+N",
-      click: () => {
-        getMainWindow()?.webContents.send(IpcMessages.CHAT_NEW_CHAT);
-      },
-    },
-    { role: "close" },
-  ];
+  const template: MenuItemConstructorOptions[] = [{ role: "close" }];
 
   if (process.platform === "win32") {
     template.push(
@@ -154,12 +143,8 @@ function getFileMenu(): MenuItemConstructorOptions[] {
 function getViewMenu(): MenuItemConstructorOptions[] {
   return [
     {
-      label: "Chat",
-      click: () => openView("chat"),
-    },
-    {
-      label: "Chat History",
-      click: () => openView("chats"),
+      label: "Settings",
+      click: () => openView("settings-general"),
     },
     { type: "separator" },
     { role: "toggleDevTools" },

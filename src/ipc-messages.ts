@@ -41,6 +41,17 @@ export const IpcMessages = {
   CHAT_DELETE_ALL_CHATS: "clippy_chat_delete_all_chats",
   CHAT_NEW_CHAT: "clippy_chat_new_chat",
 
+  // Roaster (main -> renderer: here's what the user is doing, go heckle them)
+  ROAST_CONTEXT: "clippy_roast_context",
+  // Roaster (renderer -> main: roast right now, e.g. user clicked Clippy)
+  ROAST_NOW: "clippy_roast_now",
+
   // Clipboard
   CLIPBOARD_WRITE: "clippy_clipboard_write",
+};
+
+/** Context about the user's foreground window, sent to the renderer to roast. */
+export type RoastContext = {
+  app?: string;
+  title?: string;
 };
