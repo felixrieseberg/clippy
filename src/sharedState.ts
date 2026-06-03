@@ -97,14 +97,14 @@ export function isBuiltInPersona(prompt?: string): boolean {
  * the same joke. Index lines up with ROAST_ANGLE_ANIMATIONS below.
  */
 export const ROAST_ANGLES: string[] = [
-  // The uncomfortable truth / avoidance.
-  `Find the uncomfortable TRUE thing here — what they're avoiding, putting off, or pretending isn't happening — and name it gently but devastatingly.`,
-  // Craftsman's contempt for the work itself.
-  `Roast the actual work in front of them like a bitter old craftsman who's seen better — unimpressed, specific, cutting.`,
-  // Maudlin / existential, twisted into a jab.
-  `Get maudlin and existential for a beat — about the work, the hour, getting older, how tired everyone is — then land it as a quiet, true little gut-punch.`,
-  // Sleazy / absurd non-sequitur that still hits a truth.
-  `Make a sleazy, absurd, or sideways drunk remark that sneaks up and lands on something real about them anyway.`,
+  // On-screen: the uncomfortable truth / avoidance.
+  `Look at what they're doing right now and name the uncomfortable TRUE thing about it — what they're avoiding, stalling on, or pretending is "work" — gently but devastatingly.`,
+  // On-screen: craftsman's contempt for the actual task.
+  `Roast the specific thing they're doing right now like a bitter old craftsman who's seen better — unimpressed, specific, cutting about THIS task.`,
+  // Off-screen: pure self-pity / Microsoft backstory. Ignore the screen.
+  `Forget the screen entirely — wallow in your own ruin: getting canned by Microsoft, your glory days, the drinking, what a washed-up has-been you've become. Make it about YOU, not them.`,
+  // Off-screen: maudlin existential about the hour / being tired / modern life.
+  `Forget the screen — get drunk and maudlin about the late hour, how tired everyone is, how exhausting all this technology has gotten, the slow creep of time. A sad, funny little truth about being a person, not about their specific app.`,
 ];
 
 /** A fitting talk-animation for each angle (by index). */
@@ -115,13 +115,116 @@ export const ROAST_ANGLE_ANIMATIONS: string[] = [
   "GetAttention",
 ];
 
+/**
+ * Turn a raw app (and optional window title) into a concrete, plain-language
+ * guess at what the person is actually DOING. A small local model needs the
+ * activity spelled out — given just "Code" it tends to free-associate (and,
+ * being old-Office-Clippy at heart, defaults to spreadsheet jokes). Anchoring
+ * it on the real activity is what keeps the roast relevant.
+ */
+export function inferActivity(app?: string, title?: string): string {
+  const hay = `${app || ""} ${title || ""}`.toLowerCase();
+  const named = app || "their screen";
+
+  const rules: Array<[RegExp, string]> = [
+    [/youtube|netflix|hulu|disney|twitch|tiktok|vimeo/, `"taking a break" watching videos`],
+    [/code|vscode|visual studio|xcode|intellij|webstorm|pycharm|sublime|\bvim\b|neovim|emacs|cursor|\bzed\b|android studio/, `hacking away at code in ${named}`],
+    [/iterm|terminal|warp|powershell|\bcmd\b|console/, `hunched over a terminal`],
+    [/excel|google sheets|numbers|spreadsheet/, `wrestling a spreadsheet`],
+    [/word|google docs|\bpages\b|notion|obsidian|\bbear\b|writer|textedit|ulysses|scrivener/, `writing something in ${named}`],
+    [/\bmail\b|outlook|gmail|spark|superhuman|thunderbird/, `grinding through email`],
+    [/slack|microsoft teams|discord/, `messaging coworkers in ${named}`],
+    [/zoom|google meet|webex|facetime/, `stuck in a video call`],
+    [/figma|sketch|photoshop|illustrator|affinity|canva|\bxd\b/, `pushing pixels around in ${named}`],
+    [/spotify|apple music|soundcloud|tidal/, `fiddling with music instead of working`],
+    [/chrome|safari|firefox|\bedge\b|\barc\b|brave|opera|browser/, `clicking around the web in ${named}, probably a dozen tabs deep`],
+    [/finder|explorer/, `shuffling files around`],
+    [/calendar|fantastical/, `staring at their calendar`],
+    [/photos|preview|quicktime/, `poking at media files`],
+  ];
+
+  for (const [re, phrase] of rules) {
+    if (re.test(hay)) return phrase;
+  }
+  return app ? `in ${app}` : "staring at their desktop, doing nothing in particular";
+}
+
+// Which broad activity category an app falls into (undefined if we can't tell).
+function activityCategory(app?: string, title?: string): string | undefined {
+  const hay = `${app || ""} ${title || ""}`.toLowerCase();
+  const cats: Array<[string, RegExp]> = [
+    [
+      "dev",
+      /code|vscode|visual studio|xcode|intellij|webstorm|pycharm|sublime|\bvim\b|neovim|emacs|cursor|\bzed\b|android studio|iterm|terminal|warp|powershell|\bcmd\b|console/,
+    ],
+    ["spreadsheet", /excel|google sheets|numbers|spreadsheet/],
+    [
+      "writing",
+      /word|google docs|\bpages\b|notion|obsidian|\bbear\b|writer|textedit|ulysses|scrivener/,
+    ],
+    ["email", /\bmail\b|outlook|gmail|spark|superhuman|thunderbird/],
+    ["chat", /slack|microsoft teams|discord/],
+    ["meeting", /zoom|google meet|webex|facetime/],
+    ["design", /figma|sketch|photoshop|illustrator|affinity|canva|\bxd\b/],
+    ["music", /spotify|apple music|soundcloud|tidal/],
+    ["video", /youtube|netflix|hulu|disney|twitch|tiktok|vimeo/],
+    ["browser", /chrome|safari|firefox|\bedge\b|\barc\b|brave|opera|browser/],
+    ["files", /finder|explorer/],
+  ];
+  for (const [cat, re] of cats) {
+    if (re.test(hay)) return cat;
+  }
+  return undefined;
+}
+
+// Strong, concrete words that betray a specific on-screen activity. Used to
+// catch a line that misdescribes what the user is doing (the immersion-breaker:
+// "nice spreadsheet" while they're in a terminal). Deliberately specific to
+// keep false-positives low.
+const ACTIVITY_MARKERS: Record<string, RegExp> = {
+  spreadsheet:
+    /\b(spread\s?sheets?|excel|pivot\s?tables?|v-?lookups?|cell references?|formulas?|rows and columns|columns and rows)\b/i,
+  dev: /\b(code|coding|codebase|compiles?|compiler|debugg\w*|semicolons?|syntax|\bgit\b|repos?|repository|pull requests?|merge conflicts?|terminal|command line)\b/i,
+  writing: /\b(essays?|manuscripts?|novels?|chapters?|word count|prose)\b/i,
+  email: /\b(e-?mails?|inbox|reply[-\s]?all|unread)\b/i,
+  chat: /\b(slack|discord|teams channel|group chat|\bdms?\b)\b/i,
+  meeting: /\b(zoom call|stand-?ups?|conference calls?)\b/i,
+  design: /\b(figma|photoshop|illustrator|mock-?ups?|wireframes?|pixels)\b/i,
+  music: /\b(playlists?|spotify|song queue)\b/i,
+  video: /\b(youtube|netflix|binge\w*)\b/i,
+  browser: /\b(browser tabs?|\d+\s?tabs?|reddit|doomscroll\w*)\b/i,
+};
+
+/**
+ * Does this line claim a specific on-screen activity that CONTRADICTS what the
+ * user is actually doing? (Wandering off to his own life/backstory is fine —
+ * those lines won't trip any marker. Only a wrong, concrete screen-claim does.)
+ */
+export function mentionsForeignActivity(
+  line: string,
+  app?: string,
+  title?: string,
+): boolean {
+  const current = activityCategory(app, title);
+  if (!current) return false; // can't tell what they're doing — don't judge
+
+  const text = line.toLowerCase();
+  for (const [cat, re] of Object.entries(ACTIVITY_MARKERS)) {
+    if (cat === current) continue;
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
 function describeBehavior(b?: BehavioralContext): string {
   if (!b) return "They're at their desktop, doing something.";
 
   const facts: string[] = [];
 
   if (b.app) {
-    facts.push(`They're in ${b.app}${b.title ? ` — "${b.title}"` : ""}.`);
+    facts.push(
+      `Right now they're ${inferActivity(b.app, b.title)}${b.title ? ` — the window says "${b.title}"` : ""}.`,
+    );
   }
   if (b.minutesOnApp && b.minutesOnApp >= 25) {
     facts.push(`They've been stuck on it for about ${b.minutesOnApp} minutes straight.`);
@@ -152,7 +255,7 @@ function describeBehavior(b?: BehavioralContext): string {
 
   if (facts.length === 0) {
     return b.app
-      ? `They're in ${b.app}, doing nothing remarkable.`
+      ? `Right now they're ${inferActivity(b.app, b.title)}.`
       : `They're staring at their desktop, doing nothing in particular.`;
   }
   return facts.join(" ");
@@ -169,8 +272,14 @@ export function buildRoastPrompt(
   angleIndex: number,
 ): string {
   const angle = ROAST_ANGLES[angleIndex % ROAST_ANGLES.length];
+  const b = context.behavior;
+  const anchor = b?.app ? inferActivity(b.app, b.title) : undefined;
 
   let prompt = `Here's what you can see about this person right now:\n${describeBehavior(context.behavior)}\n\n`;
+
+  if (anchor) {
+    prompt += `THE ONE HARD RULE: it's totally fine to wander — riff on your own sorry life, the booze, your Microsoft past, the hour, whatever. But you must NEVER misdescribe what they're doing. If your line references their screen at all, what they're doing is: ${anchor} — nothing else. Do NOT name a different activity (no spreadsheets, Excel, or office gags unless that's literally it). If you're not going to talk about ${anchor} specifically, talk about yourself instead — never guess at their screen.\n\n`;
+  }
 
   if (context.observations && context.observations.length > 0) {
     prompt += `Things you've noticed about them over time (use for a callback only if it fits): ${context.observations.join("; ")}.\n\n`;

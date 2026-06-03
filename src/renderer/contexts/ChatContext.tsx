@@ -16,6 +16,7 @@ import { playPopSound } from "../helpers/sound";
 import {
   buildRoastPrompt,
   buildCriticPrompt,
+  mentionsForeignActivity,
   ROAST_ANGLES,
   ROAST_ANGLE_ANIMATIONS,
   ROAST_CRITIC_SYSTEM_PROMPT,
@@ -251,6 +252,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const text = trimToRoast(raw);
         if (!text || looksLikeJunk(text)) continue;
         if (!isNovel(text, [...recentLines, ...keptText])) continue;
+        // Reject lines that misdescribe what they're doing (immersion-breaker);
+        // off-screen rambling about himself passes fine.
+        if (mentionsForeignActivity(text, ctx.app, ctx.title)) continue;
 
         kept.push({
           text,
