@@ -6,6 +6,7 @@ import {
 } from "./windows";
 import { IpcMessages } from "../ipc-messages";
 import { roastNow } from "./roaster";
+import { ensureScreenRecordingPermission } from "./permissions";
 import { getModelManager } from "./models";
 import { getStateManager } from "./state";
 import { getChatManager } from "./chats";
@@ -25,6 +26,11 @@ export function setupIpcListeners() {
 
   // Roaster
   ipcMain.handle(IpcMessages.ROAST_NOW, () => roastNow());
+
+  // Permissions
+  ipcMain.handle(IpcMessages.ENSURE_SCREEN_PERMISSION, () =>
+    ensureScreenRecordingPermission(),
+  );
 
   // App
   ipcMain.handle(IpcMessages.APP_CHECK_FOR_UPDATES, () => checkForUpdates());

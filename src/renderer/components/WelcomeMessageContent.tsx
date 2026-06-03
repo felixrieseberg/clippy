@@ -64,8 +64,8 @@ export const WelcomeMessageContent: React.FC = () => {
         </div>
       )}
 
-      <button onClick={() => setCurrentView("settings-model")}>
-        Open Model Settings
+      <button onClick={() => setCurrentView("settings-appearance")}>
+        Open Settings
       </button>
     </div>
   );

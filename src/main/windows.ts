@@ -185,6 +185,8 @@ export function getPopoverWindowPosition(
   const { width, height } = size;
   const SPACING = 12; // Horizontal gap to Clippy — small so the bubble hugs him
   const UP_OFFSET = 70; // Lift the bubble up toward Clippy's head
+  const RIGHT_NUDGE = 20; // Shift the bubble a touch right, toward Clippy
+  const DOWN_NUDGE = 32; // Drop the bubble down a touch
 
   // Get the current display
   const displays = screen.getAllDisplays();
@@ -205,9 +207,12 @@ export function getPopoverWindowPosition(
   } else {
     x = leftPosition;
   }
+  x += RIGHT_NUDGE;
 
-  // Align near the bottom of the parent, then lift up toward Clippy's head.
-  let y = parentBounds.y + parentBounds.height - height - UP_OFFSET;
+  // Align near the bottom of the parent, lift up toward Clippy's head, then
+  // nudge back down a touch.
+  let y =
+    parentBounds.y + parentBounds.height - height - UP_OFFSET + DOWN_NUDGE;
 
   // Check if the window would be too high (off-screen at the top)
   if (y < display.bounds.y) {

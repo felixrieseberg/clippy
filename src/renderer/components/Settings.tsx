@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 
 import { TabList } from "./TabList";
 import { BubbleView, useBubbleView } from "../contexts/BubbleViewContext";
-import { SettingsModel } from "./SettingsModel";
 import { BubbleWindowBottomBar } from "./BubbleWindowBottomBar";
-import { SettingsAdvanced } from "./SettingsAdvanced";
 import { SettingsAppearance } from "./SettingsAppearance";
 import { SettingsAbout } from "./SettingsAbout";
-import { SettingsParameters } from "./SettingsParameters";
 
-export type SettingsTab = "appearance" | "model" | "advanced" | "about";
+// Clippy's Revenge is a fixed-personality toy, not a tunable tool: the only
+// settings we expose are the harmless "fun" toggles (Options) and the
+// credits/legal page (About). The Model / Parameters / Advanced tabs — which
+// let you swap the model, edit his system prompt, and tweak generation
+// parameters — were removed on purpose so his personality can't be edited.
+// (Their components still exist in the repo if ever needed.)
+export type SettingsTab = "appearance" | "about";
 
 export type SettingsProps = {
   onClose: () => void;
@@ -30,10 +33,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   }, [currentView, activeTab]);
 
   const tabs = [
-    { label: "Appearance", key: "appearance", content: <SettingsAppearance /> },
-    { label: "Model", key: "model", content: <SettingsModel /> },
-    { label: "Parameters", key: "parameters", content: <SettingsParameters /> },
-    { label: "Advanced", key: "advanced", content: <SettingsAdvanced /> },
+    { label: "Options", key: "appearance", content: <SettingsAppearance /> },
     { label: "About", key: "about", content: <SettingsAbout /> },
   ];
 
@@ -63,16 +63,9 @@ function bubbleViewToSettingsTab(view: BubbleView): SettingsTab {
   }
 
   const settingsTab = view.replace(/settings-?/, "");
-  const settingsTabs = [
-    "appearance",
-    "model",
-    "parameters",
-    "advanced",
-    "about",
-  ] as const;
 
-  if (settingsTabs.includes(settingsTab as SettingsTab)) {
-    return settingsTab as SettingsTab;
+  if (settingsTab === "about") {
+    return "about";
   }
 
   return "appearance";

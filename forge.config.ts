@@ -200,11 +200,11 @@ const config: ForgeConfig = {
 
       return true;
     },
-    appBundleId: "com.felixrieseberg.clippy",
+    appBundleId: "com.lucaswhitman.clippysrevenge",
     appCategoryType: "public.app-category.productivity",
     win32metadata: {
-      CompanyName: "Felix Rieseberg",
-      OriginalFilename: "Clippy",
+      CompanyName: "Lucas Whitman",
+      OriginalFilename: "Clippy's Revenge",
     },
     osxSign: FLAGS.IS_CODESIGNING_ENABLED
       ? {
@@ -231,15 +231,17 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel(
       (arch) => ({
-        name: "Clippy",
-        authors: "Felix Rieseberg",
-        exe: "Clippy.exe",
+        // NuGet package id — must stay alphanumeric (no spaces/apostrophes),
+        // while the on-disk app/exe uses the productName "Clippy's Revenge".
+        name: "ClippysRevenge",
+        authors: "Lucas Whitman",
+        exe: "Clippy's Revenge.exe",
         noMsi: true,
         remoteReleases: "",
         iconUrl:
           "https://raw.githubusercontent.com/felixrieseberg/windows95/master/assets/icon.ico",
         loadingGif: "./assets/boot.gif",
-        setupExe: `Clippy-${packageJson.version}-setup-${arch}.exe`,
+        setupExe: `ClippysRevenge-${packageJson.version}-setup-${arch}.exe`,
         setupIcon: path.resolve(__dirname, "assets", "icon.ico"),
         windowsSign: FLAGS.IS_CODESIGNING_ENABLED ? windowsSign : undefined,
       }),

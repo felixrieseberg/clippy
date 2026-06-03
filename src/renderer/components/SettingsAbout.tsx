@@ -17,24 +17,37 @@ export const SettingsAbout: React.FC = () => {
       <fieldset>
         <legend>Version</legend>
         <p>
-          Clippy <code>{versions.clippy || "Unknown"}</code> (with Electron{" "}
-          <code>{versions.electron || "Unknown"}</code> and Node-llama-cpp:{" "}
-          <code>{versions.nodeLlamaCpp || "Unknown"})</code>
+          Clippy's Revenge <code>{versions.clippy || "Unknown"}</code> (with
+          Electron <code>{versions.electron || "Unknown"}</code> and
+          Node-llama-cpp: <code>{versions.nodeLlamaCpp || "Unknown"})</code>
         </p>
       </fieldset>
       <p>
-        This app is a love letter and homage to the late, great Clippy, the
-        assistant from Microsoft Office 1997. It is <i>not</i> affiliated,
-        approved, or supported by Microsoft. Consider it software art. If you
-        don't like it, consider it software satire.
+        <strong>Clippy's Revenge</strong> is a parody: the late, great Clippy
+        from Microsoft Office 1997 has been fired, fallen on hard times, and had
+        a few too many drinks — now he's crawled back onto your desktop to
+        heckle whatever you're doing. It is <i>not</i> affiliated, approved, or
+        supported by Microsoft. Consider it software art. If you don't like it,
+        consider it software satire.
       </p>
       <h3>Acknowledgments</h3>
       <p>
-        This app was made by{" "}
+        Clippy's Revenge was made by{" "}
+        <a href="https://github.com/lucaswhitman" target="_blank">
+          Lucas Whitman
+        </a>
+        . It's a parody fork of the original{" "}
+        <a href="https://github.com/felixrieseberg/clippy" target="_blank">
+          Clippy
+        </a>{" "}
+        app by{" "}
         <a href="https://github.com/felixrieseberg" target="_blank">
           Felix Rieseberg
-        </a>{" "}
-        using{" "}
+        </a>
+        , whose excellent work made this whole silly thing possible — thank you.
+      </p>
+      <p>
+        Built with{" "}
         <a href="https://electronjs.org/" target="_blank">
           Electron
         </a>{" "}

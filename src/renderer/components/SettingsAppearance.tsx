@@ -6,26 +6,20 @@ import { Checkbox } from "./Checkbox";
 export const SettingsAppearance: React.FC = () => {
   const { settings } = useSharedState();
 
-  const onChangeFontSize = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newSize = parseInt(event.target.value, 10);
-
-    if (!isNaN(newSize)) {
-      clippyApi.setState("settings.defaultFontSize", newSize);
-    }
-  };
-
   const onReset = () => {
-    const defaultAppareanceSettings: SettingsState = {
+    const defaultOptions: SettingsState = {
       defaultFont: DEFAULT_SETTINGS.defaultFont,
       defaultFontSize: DEFAULT_SETTINGS.defaultFontSize,
       clippyAlwaysOnTop: DEFAULT_SETTINGS.clippyAlwaysOnTop,
       soberMode: DEFAULT_SETTINGS.soberMode,
+      soundEnabled: DEFAULT_SETTINGS.soundEnabled,
+      readWindowTitles: DEFAULT_SETTINGS.readWindowTitles,
     };
 
-    for (const key in defaultAppareanceSettings) {
+    for (const key in defaultOptions) {
       clippyApi.setState(
         `settings.${key}`,
-        defaultAppareanceSettings[key as keyof SettingsState],
+        defaultOptions[key as keyof SettingsState],
       );
     }
   };
@@ -33,7 +27,7 @@ export const SettingsAppearance: React.FC = () => {
   return (
     <div>
       <fieldset>
-        <legend>Window Options</legend>
+        <legend>Options</legend>
         <Checkbox
           id="clippyAlwaysOnTop"
           label="Keep Clippy always on top of all other windows"
@@ -50,41 +44,48 @@ export const SettingsAppearance: React.FC = () => {
             clippyApi.setState("settings.soberMode", checked);
           }}
         />
+        <Checkbox
+          id="soundEnabled"
+          label="Play a sound when Clippy pops up"
+          checked={settings.soundEnabled !== false}
+          onChange={(checked) => {
+            clippyApi.setState("settings.soundEnabled", checked);
+          }}
+        />
       </fieldset>
       <fieldset>
-        <legend>Font Options</legend>
-        <div className="field-row" style={{ width: 300 }}>
-          <label style={{ width: 100 }}>Font size:</label>
-          <label>8px</label>
-          <input
-            type="range"
-            min="8"
-            max="20"
-            step={1}
-            value={settings.defaultFontSize}
-            onChange={onChangeFontSize}
-          />
-          <label>20px</label>
-        </div>
-        <div className="field-row" style={{ width: 300 }}>
-          <label htmlFor="defaultFont" style={{ width: 58 }}>
-            Font:
-          </label>
-          <select
-            id="defaultFont"
-            value={settings.defaultFont}
-            onChange={(event) => {
-              clippyApi.setState("settings.defaultFont", event.target.value);
-            }}
-          >
-            <option value="Pixelated MS Sans Serif">
-              Pixelated MS Sans Serif
-            </option>
-            <option value="Comic Sans MS">Comic Sans MS</option>
-            <option value="Tahoma">Tahoma</option>
-            <option value="System Default">System Default</option>
-          </select>
-        </div>
+        <legend>What Clippy Can See</legend>
+        <Checkbox
+          id="readWindowTitles"
+          label="Let Clippy read window titles for sharper roasts"
+          checked={settings.readWindowTitles === true}
+          onChange={(checked) => {
+            clippyApi.setState("settings.readWindowTitles", checked);
+            // Ask macOS for Screen Recording permission right when they opt in.
+            if (checked) {
+              clippyApi.ensureScreenPermission();
+            }
+          }}
+        />
+        <p style={{ fontSize: 11, lineHeight: 1.4, marginTop: 6 }}>
+          Off by default, Clippy only knows <i>which app</i> is open (e.g.
+          "Safari"). Turn this on and he also reads the active window's{" "}
+          <i>title</i> — the page or document name — so his jabs can get
+          specific.
+          <br />
+          <br />
+          <strong>It's safe and private:</strong> the title is read on your
+          computer, handed only to the language model running locally on this
+          machine, and <strong>never sent anywhere or saved to logs</strong>.
+          Nothing leaves your device. Titles that look sensitive (passwords,
+          banking, private browsing) are skipped automatically.
+          <br />
+          <br />
+          On macOS you'll be asked for "Screen Recording" permission — that's
+          just how Apple gates reading other apps' window titles. Clippy never
+          captures or records your screen. You may need to grant it in System
+          Settings and relaunch.
+        </p>
       </fieldset>
       <button style={{ marginTop: 10 }} onClick={onReset}>
         Reset

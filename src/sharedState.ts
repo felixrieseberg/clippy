@@ -15,6 +15,14 @@ export interface SettingsState {
   alwaysOpenChat?: boolean;
   /** When true, Clippy keeps his mouth shut — no unprompted roasts. */
   soberMode?: boolean;
+  /** Play the "new message" chime when Clippy pops up. Defaults to on. */
+  soundEnabled?: boolean;
+  /**
+   * Let Clippy read the active window's TITLE (not just the app name) for
+   * sharper roasts. Off by default; requires macOS Screen Recording permission.
+   * Titles are used locally only and never leave the machine.
+   */
+  readWindowTitles?: boolean;
   /** Version of the built-in persona last applied; drives auto-upgrades. */
   systemPromptVersion?: number;
   /** Set once we've migrated the active model to the current default. */
@@ -85,6 +93,9 @@ export function isBuiltInPersona(prompt?: string): boolean {
  * heckle whatever the user just switched to. `app` is the application name
  * (e.g. "Code", "Excel"); `title` is the window title if we could read it.
  */
+// Remembers the last "mood" so two roasts in a row aren't the same flavor.
+let lastMoodIndex = -1;
+
 export function buildRoastPrompt(app?: string, title?: string): string {
   const where = title ? `${app} — “${title}”` : app || "their messy desktop";
 
@@ -99,7 +110,13 @@ export function buildRoastPrompt(app?: string, title?: string): string {
     `Pay no attention to the screen — just ramble like a sloppy drunk: a non-sequitur, beg for a drink, burp, whine about your aching rusty wire, or get weirdly sentimental.`,
     `Offer some sketchy, useless, or wildly inappropriate "help" loosely tied to what they've got open (${where}) — like dredging up the good NSFW subreddits for a browser, or offering to cook the books in a spreadsheet.`,
   ];
-  const mood = moods[Math.floor(Math.random() * moods.length)];
+  let moodIndex = Math.floor(Math.random() * moods.length);
+  // Don't pick the same mood twice in a row, so he doesn't get repetitive.
+  if (moodIndex === lastMoodIndex) {
+    moodIndex = (moodIndex + 1) % moods.length;
+  }
+  lastMoodIndex = moodIndex;
+  const mood = moods[moodIndex];
 
   return `${mood} In character as drunk Clippy, blurt ONE short slurred line (max two sentences). You don't need to name the app. Output only what he says out loud — no markdown, no explanation, no help-desk questions, and do NOT open with a sound effect or noise (no "whir", "blorp", "beep", "ahem", etc.). Begin straight with the words he speaks, right after the animation keyword.`;
 }
@@ -109,12 +126,14 @@ export const DEFAULT_SETTINGS: SettingsState = {
   chatAlwaysOnTop: true,
   alwaysOpenChat: false,
   soberMode: false,
+  soundEnabled: true,
+  readWindowTitles: false,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   topK: 10,
   temperature: 0.7,
   defaultFont: "Tahoma",
   defaultFontSize: 12,
-  disableAutoUpdate: false,
+  disableAutoUpdate: true,
 };
 
 export const EMPTY_SHARED_STATE: SharedState = {

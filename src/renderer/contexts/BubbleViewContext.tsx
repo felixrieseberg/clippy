@@ -5,10 +5,7 @@ import { useChat } from "./ChatContext";
 export type BubbleView =
   | "speech"
   | "settings"
-  | "settings-general"
-  | "settings-model"
-  | "settings-parameters"
-  | "settings-advanced"
+  | "settings-appearance"
   | "settings-about";
 
 type BubbleViewContextType = {

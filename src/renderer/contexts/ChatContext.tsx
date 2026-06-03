@@ -76,6 +76,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // re-subscribing the IPC listener on every render.
   const statusRef = useRef(status);
   const modelLoadedRef = useRef(isModelLoaded);
+  const soundEnabledRef = useRef(settings.soundEnabled !== false);
   const dismissTimerRef = useRef<number | undefined>(undefined);
   // The options the model session was created with, so a roast can reset the
   // conversation to a clean slate (no accumulated drift) before prompting.
@@ -86,6 +87,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     modelLoadedRef.current = isModelLoaded;
   }, [isModelLoaded]);
+  useEffect(() => {
+    soundEnabledRef.current = settings.soundEnabled !== false;
+  }, [settings.soundEnabled]);
 
   const getSystemPrompt = useCallback(() => {
     return settings.systemPrompt.replace(
@@ -133,12 +137,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
 
     // Pop the bubble open right away with a "thinking" beat so he feels
-    // responsive even while the local model grinds away.
+    // responsive even while the local model grinds away. (The notification
+    // sound waits until the actual roast text lands, below.)
     setSpokenText("");
     setAnimationKey("Thinking");
     setStatus("thinking");
     setIsBubbleOpen(true);
-    playPopSound();
 
     // Ask the model for a roast. Small local models are slow and frequently
     // refuse, ramble, or slip into helpful "assistant mode", so anything but a
@@ -204,6 +208,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setSpokenText(spoken);
     setStatus("responding");
     setIsBubbleOpen(true);
+    // Sound the notification right as the roast appears, not on the empty
+    // "thinking" bubble.
+    if (soundEnabledRef.current) {
+      playPopSound();
+    }
 
     if (dismissTimerRef.current) {
       window.clearTimeout(dismissTimerRef.current);

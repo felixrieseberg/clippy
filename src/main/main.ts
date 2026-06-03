@@ -19,7 +19,18 @@ import { startRoaster } from "./roaster";
 async function onReady() {
   console.info(`Welcome to Clippy v${app.getVersion()}`);
 
-  await setupAutoUpdater();
+  // Run as a macOS "accessory" app: no Dock icon, no app-switcher entry, and
+  // crucially he never steals keyboard focus when he pops up to heckle. He's a
+  // desktop pet, not a window you switch to. (Quit via the menu / Cmd+Q while
+  // focused, or Sober Mode to mute him.)
+  if (process.platform === "darwin") {
+    app.setActivationPolicy("accessory");
+  }
+
+  // Auto-updates are intentionally disabled — Clippy's Revenge isn't shipping a
+  // release feed. The updater code is left in place (see ./update) so it can be
+  // re-enabled later by restoring this call.
+  // await setupAutoUpdater();
   await loadLlm();
   setupAppMenu();
   setupIpcListeners();

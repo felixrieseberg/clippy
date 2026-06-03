@@ -45,6 +45,9 @@ export const IpcMessages = {
   ROAST_CONTEXT: "clippy_roast_context",
   // Roaster (renderer -> main: roast right now, e.g. user clicked Clippy)
   ROAST_NOW: "clippy_roast_now",
+  // Permissions (renderer -> main: ask macOS for Screen Recording so Clippy
+  // can read window titles)
+  ENSURE_SCREEN_PERMISSION: "clippy_ensure_screen_permission",
 
   // Clipboard
   CLIPBOARD_WRITE: "clippy_clipboard_write",

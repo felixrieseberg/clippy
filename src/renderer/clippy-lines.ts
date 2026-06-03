@@ -174,10 +174,16 @@ function hash(str: string): number {
 }
 
 let pickCounter = 0;
+let lastPickedText = "";
 
 function pick(lines: ClippyLine[], seedStr: string): ClippyLine {
   // Mix in a counter so repeated roasts of the same app still vary.
-  const index = (hash(seedStr) + pickCounter++) % lines.length;
+  let index = (hash(seedStr) + pickCounter++) % lines.length;
+  // Avoid repeating the exact same line twice in a row.
+  if (lines.length > 1 && lines[index].text === lastPickedText) {
+    index = (index + 1) % lines.length;
+  }
+  lastPickedText = lines[index].text;
   return lines[index];
 }
 

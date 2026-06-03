@@ -1,25 +1,36 @@
 {
-  "name": "Clippy",
-  "productName": "Clippy",
+  "name": "clippys-revenge",
+  "productName": "Clippy's Revenge",
   "version": "0.4.3",
-  "description": "Clippy",
+  "description": "Clippy's Revenge — a parody desktop pet where a washed-up, bitter, drunk Clippy heckles you about whatever you're doing. A fork of Felix Rieseberg's Clippy. Not affiliated with Microsoft.",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:mac": "cross-env IS_CODESIGNING_ENABLED=false electron-forge make --platform=darwin",
+    "make:mac:universal": "cross-env IS_CODESIGNING_ENABLED=false electron-forge make --platform=darwin --arch=universal",
+    "make:win": "cross-env IS_CODESIGNING_ENABLED=false electron-forge make --platform=win32",
+    "make:all": "npm run make:mac && npm run make:win",
     "publish": "electron-forge publish",
     "lint": "prettier --write --ext .ts,.tsx .",
     "extract-animations": "./tools/extract-animations.sh -j ./assets/animations/clippy/animations.json -s ./assets/animations/clippy/map.png -o src/renderer/images/animations"
   },
   "keywords": [],
   "author": {
-    "name": "Felix Rieseberg",
-    "email": "fr@makenotion.com"
+    "name": "Lucas Whitman",
+    "email": "lucas@urbansitter.com"
   },
+  "contributors": [
+    {
+      "name": "Felix Rieseberg",
+      "email": "fr@makenotion.com",
+      "url": "https://github.com/felixrieseberg/clippy"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/felixrieseberg/clippy"
+    "url": "https://github.com/lucaswhitman/clippys-revenge"
   },
   "license": "MIT",
   "devDependencies": {
@@ -37,6 +48,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "cross-env": "^10.1.0",
     "dotenv": "^16.5.0",
     "electron": "35.1.4",
     "eslint": "^8.57.1",
