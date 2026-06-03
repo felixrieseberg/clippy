@@ -9,7 +9,6 @@ import {
 } from "react";
 import { electronAi, clippyApi } from "../clippyApi";
 import { SharedStateContext } from "./SharedStateContext";
-import { areAnyModelsReadyOrDownloading } from "../../helpers/model-helpers";
 import { useDebugState } from "./DebugContext";
 import {
   ANIMATION_KEYS_BRACKETS,
@@ -18,6 +17,7 @@ import {
 import { drunkify } from "../../helpers/drunkify";
 import { playPopSound } from "../helpers/sound";
 import { buildRoastPrompt } from "../../sharedState";
+import { DEFAULT_MODEL_NAME } from "../../models";
 import { RoastContext } from "../../ipc-messages";
 import {
   getFallbackLine,
@@ -254,26 +254,42 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [models]);
 
-  // At startup, if no model is ready, kick off a download of our smallest one
-  // so Clippy has a voice.
+  // At startup, make sure our preferred default model is downloading/ready so
+  // Clippy ends up with a capable voice. (Any already-downloaded model serves
+  // as a stopgap until the preferred one finishes — see the migration below.)
   useEffect(() => {
-    if (
-      Object.keys(models).length === 0 ||
-      areAnyModelsReadyOrDownloading(models) ||
-      hasPerformedStartupCheck
-    ) {
+    if (Object.keys(models).length === 0 || hasPerformedStartupCheck) {
       return;
     }
 
     setHasPerformedStartupCheck(true);
 
-    const downloadModelIfNoneReady = async () => {
-      await clippyApi.downloadModelByName("Gemma 3 (1B)");
+    const preferred = models[DEFAULT_MODEL_NAME];
+    if (preferred?.downloaded || preferred?.downloadState) {
+      return;
+    }
+
+    const downloadPreferred = async () => {
+      await clippyApi.downloadModelByName(DEFAULT_MODEL_NAME);
       setTimeout(() => clippyApi.updateModelState(), 500);
     };
 
-    void downloadModelIfNoneReady();
-  }, [models]);
+    void downloadPreferred();
+  }, [models, hasPerformedStartupCheck]);
+
+  // One-time migration: as soon as the preferred model is downloaded, make it
+  // the active one (upgrading installs that were running an older default like
+  // Gemma 1B). We only do this once so a deliberate manual choice later sticks.
+  useEffect(() => {
+    if (settings.preferredModelApplied) {
+      return;
+    }
+
+    if (models[DEFAULT_MODEL_NAME]?.downloaded) {
+      clippyApi.setState("settings.selectedModel", DEFAULT_MODEL_NAME);
+      clippyApi.setState("settings.preferredModelApplied", true);
+    }
+  }, [models, settings.preferredModelApplied]);
 
   // Subscribe to roast requests pushed from the main process.
   useEffect(() => {

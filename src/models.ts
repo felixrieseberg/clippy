@@ -18,6 +18,14 @@ export interface ManagedModel extends Model {
 
 export type ModelState = Record<string, ManagedModel>;
 
+/**
+ * The model Clippy uses out of the box. A 3B model is the sweet spot: small
+ * enough to run locally and fast-ish, big enough to follow the persona and
+ * actually riff on context — and, unlike the Gemma/Phi families, Meta's Llama
+ * is far less prone to refusing a comedy roast.
+ */
+export const DEFAULT_MODEL_NAME = "Llama 3.2 (3B Instruct)";
+
 export const BUILT_IN_MODELS: Model[] = [
   {
     name: "Gemma 3 (1B)",
