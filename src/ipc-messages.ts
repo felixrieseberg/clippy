@@ -45,6 +45,10 @@ export const IpcMessages = {
   ROAST_CONTEXT: "clippy_roast_context",
   // Roaster (renderer -> main: roast right now, e.g. user clicked Clippy)
   ROAST_NOW: "clippy_roast_now",
+  // Roaster (renderer -> main: here's the line he just said, remember it)
+  ROAST_SPOKEN: "clippy_roast_spoken",
+  // Memory (renderer -> main: forget everything he's learned/said)
+  CLEAR_MEMORY: "clippy_clear_memory",
   // Permissions (renderer -> main: ask macOS for Screen Recording so Clippy
   // can read window titles)
   ENSURE_SCREEN_PERMISSION: "clippy_ensure_screen_permission",
@@ -53,8 +57,51 @@ export const IpcMessages = {
   CLIPBOARD_WRITE: "clippy_clipboard_write",
 };
 
-/** Context about the user's foreground window, sent to the renderer to roast. */
-export type RoastContext = {
+export type PartOfDay =
+  | "lateNight"
+  | "earlyMorning"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "night";
+
+/**
+ * What Clippy can observe about what the user is doing right now — derived from
+ * behavior over time, not just a snapshot. All on-device. `title` is omitted
+ * entirely for sensitive/incognito windows.
+ */
+export type BehavioralContext = {
   app?: string;
   title?: string;
+  /** Minutes spent continuously on the current app. */
+  minutesOnApp?: number;
+  /** App switches in roughly the last 5 minutes. */
+  recentSwitches?: number;
+  /** Rapidly bouncing between apps, unable to settle. */
+  thrashing?: boolean;
+  /** Just came back to an app they'd wandered away from. */
+  returnedToApp?: boolean;
+  /** Just returned after being idle/away for a while. */
+  idleReturn?: boolean;
+  /** Minutes since this computing session started. */
+  sessionMinutes?: number;
+  partOfDay?: PartOfDay;
+  /** Human-readable local time, e.g. "2:47am". */
+  localTime?: string;
+};
+
+/**
+ * The full payload sent to the renderer when it's time to roast: what the user
+ * is doing, plus the memory Clippy needs to stay fresh and land callbacks.
+ */
+export type RoastContext = {
+  // Kept at the top level for backward-compatibility with the fallback lines.
+  app?: string;
+  title?: string;
+  /** Rich behavioral signal for the prompt. */
+  behavior?: BehavioralContext;
+  /** Recent things he's said, so he never repeats himself. */
+  recentLines?: string[];
+  /** Durable, non-sensitive notes about the user, for callbacks. */
+  observations?: string[];
 };

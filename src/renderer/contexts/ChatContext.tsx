@@ -10,13 +10,16 @@ import {
 import { electronAi, clippyApi } from "../clippyApi";
 import { SharedStateContext } from "./SharedStateContext";
 import { useDebugState } from "./DebugContext";
-import {
-  ANIMATION_KEYS_BRACKETS,
-  parseAnimation,
-} from "../clippy-animation-helpers";
+import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import { drunkify } from "../../helpers/drunkify";
 import { playPopSound } from "../helpers/sound";
-import { buildRoastPrompt } from "../../sharedState";
+import {
+  buildRoastPrompt,
+  buildCriticPrompt,
+  ROAST_ANGLES,
+  ROAST_ANGLE_ANIMATIONS,
+  ROAST_CRITIC_SYSTEM_PROMPT,
+} from "../../sharedState";
 import { DEFAULT_MODEL_NAME } from "../../models";
 import { RoastContext } from "../../ipc-messages";
 import {
@@ -57,9 +60,87 @@ function readingTimeMs(text: string): number {
   return Math.min(15_000, 5_000 + text.length * 55);
 }
 
-// Give the (slow, local) model this long to produce a roast before we give up
-// and drop in an instant hand-written line instead.
-const GENERATION_TIMEOUT_MS = 6_000;
+// The "writers' room": generate several candidates from different comedic
+// angles, drop the generic/repeated ones, then a critic picks the sharpest.
+const CANDIDATE_COUNT = 3;
+const PER_CANDIDATE_TIMEOUT_MS = 5_000;
+const CRITIC_TIMEOUT_MS = 4_000;
+// Hotter than normal so candidates diverge instead of rephrasing each other.
+const CANDIDATE_TEMPERATURE = 0.95;
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function normalizeLine(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function contentWords(s: string): Set<string> {
+  return new Set(normalizeLine(s).split(" ").filter((w) => w.length > 3));
+}
+
+/** Is `line` essentially something we've already got/said? */
+function isNovel(line: string, against: string[]): boolean {
+  const norm = normalizeLine(line);
+  const words = contentWords(line);
+  return !against.some((other) => {
+    if (normalizeLine(other) === norm) return true;
+    const ow = contentWords(other);
+    if (words.size === 0 || ow.size === 0) return false;
+    let inter = 0;
+    for (const w of words) if (ow.has(w)) inter += 1;
+    return inter / (words.size + ow.size - inter) >= 0.5;
+  });
+}
+
+/**
+ * Run a single generation against a freshly-reset session and return the raw
+ * text. Aborts (and returns what it has) after `timeoutMs`.
+ */
+async function generateOnce(
+  options: LanguageModelCreateOptions,
+  prompt: string,
+  timeoutMs: number,
+): Promise<string> {
+  let out = "";
+  const requestUUID = crypto.randomUUID();
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    try {
+      window.electronAi.abortRequest(requestUUID);
+    } catch {
+      // request may not have started yet
+    }
+  }, timeoutMs);
+
+  try {
+    await electronAi.create(options);
+    const response = await window.electronAi.promptStreaming(prompt, {
+      requestUUID,
+    });
+    for await (const chunk of response) {
+      out += chunk;
+      if (timedOut) break;
+    }
+  } catch {
+    // return whatever we managed to collect
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  return out;
+}
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [animationKey, setAnimationKey] = useState<string>("");
@@ -136,75 +217,92 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const ctx = context || {};
+    const recentLines = ctx.recentLines || [];
+
     // Pop the bubble open right away with a "thinking" beat so he feels
-    // responsive even while the local model grinds away. (The notification
-    // sound waits until the actual roast text lands, below.)
+    // responsive while the writers' room does its thing. (The sound waits until
+    // the actual line lands, below.)
     setSpokenText("");
     setAnimationKey("Thinking");
     setStatus("thinking");
     setIsBubbleOpen(true);
 
-    // Ask the model for a roast. Small local models are slow and frequently
-    // refuse, ramble, or slip into helpful "assistant mode", so anything but a
-    // clean one-liner falls back to a hand-written line — Clippy is never left
-    // speechless.
-    let modelOutput = "";
-    const requestUUID = crypto.randomUUID();
-    let timedOut = false;
-    const genTimer = window.setTimeout(() => {
-      timedOut = true;
-      try {
-        window.electronAi.abortRequest(requestUUID);
-      } catch {
-        // The request may not have started yet; ignore.
-      }
-    }, GENERATION_TIMEOUT_MS);
+    let chosenText = "";
+    let chosenAnimation = "";
+    const baseOptions = createOptionsRef.current;
 
-    try {
-      // Reset the conversation to the system prompt only, so repeated roasts
-      // don't accumulate context and drift into chatty meta-commentary.
-      if (createOptionsRef.current) {
-        await electronAi.create(createOptionsRef.current);
+    if (baseOptions) {
+      // Generate candidates from a few DIFFERENT comedic angles, each on a
+      // fresh session (no drift), keeping only the ones that are in-character
+      // and not something he's said before.
+      const angles = shuffle([...ROAST_ANGLES.keys()]).slice(0, CANDIDATE_COUNT);
+      const kept: Array<{ text: string; animation: string }> = [];
+      const keptText: string[] = [];
+
+      for (const angleIndex of angles) {
+        const prompt = buildRoastPrompt({ ...ctx, recentLines }, angleIndex);
+        const raw = await generateOnce(
+          { ...baseOptions, temperature: CANDIDATE_TEMPERATURE },
+          prompt,
+          PER_CANDIDATE_TIMEOUT_MS,
+        );
+
+        const text = trimToRoast(raw);
+        if (!text || looksLikeJunk(text)) continue;
+        if (!isNovel(text, [...recentLines, ...keptText])) continue;
+
+        kept.push({
+          text,
+          animation:
+            ROAST_ANGLE_ANIMATIONS[angleIndex % ROAST_ANGLE_ANIMATIONS.length],
+        });
+        keptText.push(text);
       }
 
-      const prompt = buildRoastPrompt(context?.app, context?.title);
-      const response = await window.electronAi.promptStreaming(prompt, {
-        requestUUID,
-      });
-
-      for await (const chunk of response) {
-        modelOutput += chunk;
-        if (timedOut) break;
+      if (kept.length === 1) {
+        chosenText = kept[0].text;
+        chosenAnimation = kept[0].animation;
+      } else if (kept.length > 1) {
+        // Critic pass: a sober, ruthless editor picks the truest, sharpest line.
+        let winner = kept[0];
+        const criticRaw = await generateOnce(
+          {
+            ...baseOptions,
+            systemPrompt: ROAST_CRITIC_SYSTEM_PROMPT,
+            temperature: 0.2,
+          },
+          buildCriticPrompt(keptText),
+          CRITIC_TIMEOUT_MS,
+        );
+        const match = criticRaw.match(/\d+/);
+        if (match) {
+          const idx = parseInt(match[0], 10) - 1;
+          if (idx >= 0 && idx < kept.length) winner = kept[idx];
+        }
+        chosenText = winner.text;
+        chosenAnimation = winner.animation;
       }
-    } catch (error) {
-      console.error("Roast generation failed; falling back to a line", error);
-    } finally {
-      window.clearTimeout(genTimer);
     }
 
-    const { text, animationKey: parsedKey } = parseAnimation(modelOutput);
-
-    // Judge the raw output, then trim if good. If the model timed out or broke
-    // character, drop in an instant hand-written line (which is app-aware, so
-    // it's still contextual).
-    let line: string;
-    let animationKey = parsedKey;
-
-    if (timedOut || looksLikeJunk(text)) {
-      const fallback = getFallbackLine(context);
-      line = fallback.text;
-      animationKey = fallback.animation;
-    } else {
-      line = trimToRoast(text);
+    // Only if the model gave us nothing usable do we reach for a hand-written
+    // line — and even then we try to pick one he hasn't used recently.
+    if (!chosenText) {
+      let fallback = getFallbackLine(ctx);
+      for (let i = 0; i < 4 && !isNovel(fallback.text, recentLines); i++) {
+        fallback = getFallbackLine(ctx);
+      }
+      chosenText = fallback.text;
+      chosenAnimation = fallback.animation;
     }
 
-    if (!animationKey) {
-      animationKey =
+    if (!chosenAnimation) {
+      chosenAnimation =
         TALK_ANIMATIONS[Math.floor(Math.random() * TALK_ANIMATIONS.length)];
     }
 
-    const spoken = drunkify(line);
-    setAnimationKey(animationKey);
+    const spoken = drunkify(chosenText);
+    setAnimationKey(chosenAnimation);
     setSpokenText(spoken);
     setStatus("responding");
     setIsBubbleOpen(true);
@@ -212,6 +310,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // "thinking" bubble.
     if (soundEnabledRef.current) {
       playPopSound();
+    }
+
+    // Remember the line (pre-slur content) so he never repeats himself.
+    try {
+      clippyApi.roastSpoken(chosenText);
+    } catch {
+      // memory is best-effort
     }
 
     if (dismissTimerRef.current) {

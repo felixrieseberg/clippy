@@ -102,6 +102,9 @@ const clippyApi: ClippyApi = {
     ipcRenderer.removeAllListeners(IpcMessages.ROAST_CONTEXT);
   },
   roastNow: () => ipcRenderer.invoke(IpcMessages.ROAST_NOW),
+  roastSpoken: (line: string) =>
+    ipcRenderer.invoke(IpcMessages.ROAST_SPOKEN, line),
+  clearMemory: () => ipcRenderer.invoke(IpcMessages.CLEAR_MEMORY),
   ensureScreenPermission: () =>
     ipcRenderer.invoke(IpcMessages.ENSURE_SCREEN_PERMISSION),
 

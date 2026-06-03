@@ -57,6 +57,8 @@ export type ClippyApi = {
   onRoastContext: (callback: (context: RoastContext) => void) => void;
   offRoastContext: () => void;
   roastNow: () => Promise<void>;
+  roastSpoken: (line: string) => Promise<void>;
+  clearMemory: () => Promise<void>;
   // Permissions
   ensureScreenPermission: () => Promise<void>;
   // Clipboard

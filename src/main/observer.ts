@@ -1,0 +1,211 @@
+import { powerMonitor } from "electron";
+import { getStateManager } from "./state";
+import { isIncognito, isSensitiveTitle, sanitizeTitle } from "./privacy";
+import { recordObservation } from "./clippy-memory";
+import { BehavioralContext, PartOfDay } from "../ipc-messages";
+
+/**
+ * Clippy's senses. Samples the foreground window every few seconds and builds a
+ * lightweight model of what the user is *doing over time* — how long they've
+ * been grinding, whether they're app-hopping, time of day, returns from idle —
+ * so roasts can come from observed truth rather than a single snapshot.
+ *
+ * Everything is on-device. Sensitive/incognito windows are never recorded.
+ */
+
+const SAMPLE_INTERVAL = 5_000;
+const IDLE_THRESHOLD_S = 90; // away this long counts as "gone"
+const THRASH_WINDOW_MS = 5 * 60_000;
+const THRASH_COUNT = 6; // app switches within the window = "thrashing"
+
+let sampleTimer: NodeJS.Timeout | undefined;
+
+const sessionStart = Date.now();
+let currentApp: string | undefined;
+let currentTitle: string | undefined;
+let appStartedAt = Date.now();
+let lastWasIdle = false;
+let switchTimes: number[] = [];
+const seenApps = new Set<string>();
+let pendingReturnedToApp = false;
+let pendingIdleReturn = false;
+
+function isClippy(app?: string): boolean {
+  return !!app && /clippy|electron/i.test(app);
+}
+
+async function readActiveWindow(): Promise<
+  { app?: string; title?: string } | undefined
+> {
+  const { activeWindow } = await import("get-windows");
+  const readTitles =
+    getStateManager().store.get("settings").readWindowTitles === true;
+
+  try {
+    const win = await activeWindow({
+      screenRecordingPermission: readTitles,
+      accessibilityPermission: false,
+    });
+    if (!win) return undefined;
+    return { app: win.owner?.name, title: readTitles ? win.title : undefined };
+  } catch {
+    // Title permission probably not granted — retry app-name-only.
+    if (readTitles) {
+      try {
+        const win = await activeWindow({
+          screenRecordingPermission: false,
+          accessibilityPermission: false,
+        });
+        return win ? { app: win.owner?.name } : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+}
+
+async function sample(): Promise<void> {
+  let idleSeconds = 0;
+  try {
+    idleSeconds = powerMonitor.getSystemIdleTime();
+  } catch {
+    // Not available on this platform; treat as active.
+  }
+  const isIdle = idleSeconds >= IDLE_THRESHOLD_S;
+  if (lastWasIdle && !isIdle) {
+    pendingIdleReturn = true;
+  }
+  lastWasIdle = isIdle;
+  if (isIdle) return; // don't watch what isn't happening
+
+  const win = await readActiveWindow();
+  if (!win || isClippy(win.app)) return; // ignore ourselves
+
+  const app = win.app;
+  const sensitive = isSensitiveTitle(win.title) || isIncognito(win.title);
+
+  if (app && app !== currentApp) {
+    const now = Date.now();
+    switchTimes.push(now);
+    switchTimes = switchTimes.filter((t) => now - t <= THRASH_WINDOW_MS);
+    if (seenApps.has(app)) {
+      pendingReturnedToApp = true;
+    }
+    seenApps.add(app);
+    currentApp = app;
+    appStartedAt = now;
+  }
+
+  // Never retain sensitive/incognito titles, even transiently in context.
+  currentTitle = sensitive ? undefined : sanitizeTitle(win.title);
+}
+
+function partOfDay(hour: number): PartOfDay {
+  if (hour < 5) return "lateNight";
+  if (hour < 8) return "earlyMorning";
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  if (hour < 21) return "evening";
+  return "night";
+}
+
+function formatTime(d: Date): string {
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${m.toString().padStart(2, "0")}${ampm}`;
+}
+
+/**
+ * Quietly note durable, non-sensitive patterns so Clippy can call them back
+ * later ("you work late, you always have"). App names only — never titles.
+ */
+function maybeRecordObservations(ctx: BehavioralContext): void {
+  if (ctx.partOfDay === "lateNight") {
+    recordObservation("they're often up working in the small hours");
+  }
+  if (ctx.thrashing) {
+    recordObservation("they app-hop and can't settle when they're stuck");
+  }
+  if (ctx.app && ctx.minutesOnApp && ctx.minutesOnApp >= 90) {
+    recordObservation(`they can tunnel on ${ctx.app} for hours`);
+  }
+}
+
+function snapshot(consume: boolean): BehavioralContext {
+  const now = Date.now();
+  const d = new Date();
+  const recentSwitches = switchTimes.filter(
+    (t) => now - t <= THRASH_WINDOW_MS,
+  ).length;
+
+  const ctx: BehavioralContext = {
+    app: currentApp,
+    title: currentTitle,
+    minutesOnApp: currentApp
+      ? Math.floor((now - appStartedAt) / 60_000)
+      : undefined,
+    recentSwitches,
+    thrashing: recentSwitches >= THRASH_COUNT,
+    returnedToApp: pendingReturnedToApp,
+    idleReturn: pendingIdleReturn,
+    sessionMinutes: Math.floor((now - sessionStart) / 60_000),
+    partOfDay: partOfDay(d.getHours()),
+    localTime: formatTime(d),
+  };
+
+  if (consume) {
+    // One-shot flags are consumed (and observations recorded) only when this
+    // becomes an actual roast — not on the scheduler's frequent peeks.
+    pendingReturnedToApp = false;
+    pendingIdleReturn = false;
+    maybeRecordObservations(ctx);
+  }
+
+  return ctx;
+}
+
+/**
+ * Snapshot for an actual roast — consumes one-shot flags (returnedToApp,
+ * idleReturn) and records durable observations.
+ */
+export function getBehavioralContext(): BehavioralContext {
+  return snapshot(true);
+}
+
+/**
+ * Read-only snapshot for the scheduler to judge salience. Does NOT consume the
+ * one-shot flags, so a pending interesting event keeps applying pressure until
+ * Clippy actually speaks about it.
+ */
+export function peekContext(): BehavioralContext {
+  return snapshot(false);
+}
+
+/** Take a fresh sample immediately (used right before an on-demand roast). */
+export async function sampleNow(): Promise<void> {
+  await sample();
+}
+
+export function startObserver(): void {
+  stopObserver();
+  const loop = async () => {
+    try {
+      await sample();
+    } catch {
+      // ignore a bad sample; we'll try again next tick
+    }
+    sampleTimer = setTimeout(loop, SAMPLE_INTERVAL);
+  };
+  sampleTimer = setTimeout(loop, 2_000);
+}
+
+export function stopObserver(): void {
+  if (sampleTimer) {
+    clearTimeout(sampleTimer);
+    sampleTimer = undefined;
+  }
+}

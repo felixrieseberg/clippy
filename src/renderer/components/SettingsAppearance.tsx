@@ -87,6 +87,24 @@ export const SettingsAppearance: React.FC = () => {
           Settings and relaunch.
         </p>
       </fieldset>
+      <fieldset>
+        <legend>What Clippy Remembers</legend>
+        <p style={{ fontSize: 11, lineHeight: 1.4, marginTop: 0 }}>
+          Clippy keeps a small, <strong>on-device</strong> memory so he doesn't
+          repeat himself and can call back to your habits over time. It holds
+          only his own past lines and general, non-sensitive notes (app names
+          and patterns) — <strong>never window contents, and nothing at all from
+          private/incognito or sensitive windows</strong>. It never leaves your
+          computer.
+        </p>
+        <button
+          onClick={() => {
+            clippyApi.clearMemory();
+          }}
+        >
+          Make Clippy Forget Everything
+        </button>
+      </fieldset>
       <button style={{ marginTop: 10 }} onClick={onReset}>
         Reset
       </button>

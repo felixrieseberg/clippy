@@ -7,6 +7,7 @@ import {
 import { IpcMessages } from "../ipc-messages";
 import { roastNow } from "./roaster";
 import { ensureScreenRecordingPermission } from "./permissions";
+import { recordLine, clearMemory } from "./clippy-memory";
 import { getModelManager } from "./models";
 import { getStateManager } from "./state";
 import { getChatManager } from "./chats";
@@ -26,6 +27,10 @@ export function setupIpcListeners() {
 
   // Roaster
   ipcMain.handle(IpcMessages.ROAST_NOW, () => roastNow());
+  ipcMain.handle(IpcMessages.ROAST_SPOKEN, (_, line: string) =>
+    recordLine(line),
+  );
+  ipcMain.handle(IpcMessages.CLEAR_MEMORY, () => clearMemory());
 
   // Permissions
   ipcMain.handle(IpcMessages.ENSURE_SCREEN_PERMISSION, () =>

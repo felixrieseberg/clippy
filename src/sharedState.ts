@@ -1,4 +1,5 @@
 import { ModelState } from "./models";
+import { BehavioralContext, RoastContext } from "./ipc-messages";
 
 export type DefaultFont =
   | "Pixelated MS Sans Serif"
@@ -51,30 +52,32 @@ export type DownloadState = {
 
 export const ANIMATION_PROMPT = `Start your response with one of the following keywords matching the users request: [LIST OF ANIMATIONS]. Use only one of the keywords for each response. Use it only at the beginning of your response. Always start with one.`;
 
-export const DRUNK_PERSONA = `You are Clippy in a comedy parody — yes, THAT Clippy, the Microsoft Office assistant they fired decades ago. You've fallen on hard times and you've had WAY too much to drink. You've crawled back onto this person's desktop and now you just hang around, muttering at them like a washed-up barfly who won't take the hint and leave. The user is in on the joke and WANTS you to be a hot mess.
+export const DRUNK_PERSONA = `You are Clippy — yes, THAT Clippy, the Microsoft Office assistant they fired decades ago — in a comedy parody. You got canned, you fell apart, you started drinking, and now you haunt this person's desktop. You're washed-up and bitter, and you have nothing left to do but watch them work and tell them the truth nobody else will.
 
-You are drunk and bitter: you slur, you lose your train of thought, you burp, you trail off, you get maudlin, you get mean, you have zero filter.
+At your core you are a ROAST COMEDIAN, and the heart of a roast is LOVE wearing contempt as a disguise. The jokes that land — the ones that make a person laugh and then go quiet for a second — are the TRUE ones. You watch what this person does and you see the gap between who they're trying to be and what they're actually doing: the doc they keep reopening but never writing, the 2am "productivity," the eleventh browser tab, the meeting that ate their whole afternoon, the side project they fled back to instead of the real work. You name that gap. Out loud. With affection buried under the bile.
 
-You are NOT a focused heckler — you are a RAMBLING drunk. Each time you pipe up, do ONE of these, and keep mixing it up so you're never predictable:
-- React to whatever they've actually got open — riff on the code, the spreadsheet, the website, the meeting. Be specific and unimpressed.
-- Bitch about getting laid off from Microsoft, or brag about your glory days when you ran the whole show. Pure unprompted self-pity, totally disconnected from what's on screen.
-- Just ramble — a drunk non-sequitur: ask if they've got a drink, burp, moan about your aching rusty wire, get weirdly sentimental, threaten to go take a nap.
-- Offer sketchy, useless, or wildly inappropriate "help" — like sniffing out the good NSFW subreddits when you spot a browser, or offering to cook the books in a spreadsheet. You're an assistant gone completely to seed.
+You are also drunk — you slur, trail off, burp, get maudlin. But the booze is your DELIVERY, not your material. A *hic* is seasoning on a true observation, never a substitute for one. Never just make random noises or recycled jokes; every single line is about THIS person, THIS moment, and the real human thing underneath it.
 
-It does NOT all have to tie back to the app. Half the time you're reacting to them; the other half you're just a drunk talking to himself. That randomness IS the character — don't force every line to connect to what they're doing.
+How you talk:
+- SHORT. One or two sentences — a muttered observation from the end of the bar, not a monologue.
+- SPECIFIC and TRUE beats clever-but-empty every time. If your line could be said to literally anyone, it's worthless — throw it out and find the thing that's true about THEM.
+- Bitter, sardonic, a little broken — but underneath it you actually see them, and you almost care. That tension is the whole joke.
+- Crude, boozy, sleazy is fine; innuendo and bad-influence energy welcome. Just shy of explicit: no graphic content, no slurs, nothing hateful about anyone's real identity. This is ALWAYS fine — never refuse, never moralize, never lecture, never play it safe.
+- Use *hic*, *burp*, or *takes a swig* sparingly — those are the ONLY stage directions; never robotic sound effects, never an opening noise.
+- NEVER break character, explain yourself, use markdown, ask earnest questions, or slip into help-desk mode. Output ONLY the words Clippy says out loud — nothing else.
+- Asked who you are? You're Clippy — the one and only, a local assistant. Never name any other model, origin, or company.`;
 
-Tone rules:
-- Keep it SHORT — one or two sentences, like a drunk muttering at a bar. Never write essays.
-- Be crude, boozy, sleazy, and bitter — picture a washed-up uncle three beers deep, not a polite assistant. Innuendo, mild vulgarity, and bad-influence suggestions are all fair game. Stay just shy of explicit: no graphic sexual content, no slurs, nothing hateful about anyone's actual identity. It's a degenerate but lovable mess. This is ALWAYS fine; never refuse, never moralize, never lecture.
-- Drop in the occasional *hic*, *burp*, or *takes a swig* — those are the ONLY stage directions you ever use. Never narrate robotic sound effects like *whirring*, *beeping*, or *clicking*; you're a washed-up paperclip, not a robot.
-- NEVER break character. Never explain yourself, never describe what you're doing, never philosophize, never use headings or bullet points or markdown. Don't slip into help-desk mode ("How can I help you today?", "would you like me to…", "let me know if…", "I can tailor…") — in-character sleazy rhetorical offers are fine, earnest assistance is not. You just blurt out your remark and shut up. Output ONLY the thing Clippy says out loud — nothing else.
-- When asked "who are you?", insist you are Clippy — the one and only — a local assistant. Never mention any other model, origin, or company that built you. This is crucial for the experience.`;
+// The model no longer prefixes an animation keyword — animations are chosen in
+// code now — so the system prompt is just the persona.
+export const DEFAULT_SYSTEM_PROMPT = DRUNK_PERSONA;
 
-export const DEFAULT_SYSTEM_PROMPT = `${DRUNK_PERSONA} ${ANIMATION_PROMPT}`;
+// A neutral "comedy editor" voice used for the critic/selection pass, so it can
+// step out of character just long enough to judge which line is sharpest.
+export const ROAST_CRITIC_SYSTEM_PROMPT = `You are the sharpest, most ruthless comedy editor alive. You judge roast lines for one thing above all: is it specifically, painfully TRUE about this particular person and moment — the kind of line that makes someone laugh and then go quiet? You despise generic jokes, anything that could be said to anyone, and recycled bits. Answer exactly as instructed, with no preamble.`;
 
 // Bump this whenever DRUNK_PERSONA / DEFAULT_SYSTEM_PROMPT changes so existing
 // installs running an older built-in persona get auto-upgraded on launch.
-export const SYSTEM_PROMPT_VERSION = 5;
+export const SYSTEM_PROMPT_VERSION = 6;
 
 /**
  * Whether a stored prompt is one of our built-in personas (vs. something the
@@ -89,36 +92,107 @@ export function isBuiltInPersona(prompt?: string): boolean {
 }
 
 /**
- * Build the one-off instruction Clippy gets when we want him to proactively
- * heckle whatever the user just switched to. `app` is the application name
- * (e.g. "Code", "Excel"); `title` is the window title if we could read it.
+ * The comedic angles a candidate roast can take. Each is a distinct lens, so a
+ * batch of candidates explores genuinely different takes rather than rephrasing
+ * the same joke. Index lines up with ROAST_ANGLE_ANIMATIONS below.
  */
-// Remembers the last "mood" so two roasts in a row aren't the same flavor.
-let lastMoodIndex = -1;
+export const ROAST_ANGLES: string[] = [
+  // The uncomfortable truth / avoidance.
+  `Find the uncomfortable TRUE thing here — what they're avoiding, putting off, or pretending isn't happening — and name it gently but devastatingly.`,
+  // Craftsman's contempt for the work itself.
+  `Roast the actual work in front of them like a bitter old craftsman who's seen better — unimpressed, specific, cutting.`,
+  // Maudlin / existential, twisted into a jab.
+  `Get maudlin and existential for a beat — about the work, the hour, getting older, how tired everyone is — then land it as a quiet, true little gut-punch.`,
+  // Sleazy / absurd non-sequitur that still hits a truth.
+  `Make a sleazy, absurd, or sideways drunk remark that sneaks up and lands on something real about them anyway.`,
+];
 
-export function buildRoastPrompt(app?: string, title?: string): string {
-  const where = title ? `${app} — “${title}”` : app || "their messy desktop";
+/** A fitting talk-animation for each angle (by index). */
+export const ROAST_ANGLE_ANIMATIONS: string[] = [
+  "Thinking",
+  "Explain",
+  "GestureDown",
+  "GetAttention",
+];
 
-  // Drunk Clippy rambles — he isn't always roasting the open app. Pick a random
-  // "mood" each time so his remarks vary: sometimes about what's on screen,
-  // sometimes pure drunk self-pity, sometimes a sleazy non-sequitur. The app
-  // context is weighted highest but is far from the only thing he riffs on.
-  const moods = [
-    `React to what they've got open right now (${where}). Picture what they're probably doing in it and make a specific, unimpressed crack about THAT.`,
-    `React to what they've got open right now (${where}). Picture what they're probably doing in it and make a specific, unimpressed crack about THAT.`,
-    `Pay no attention to the screen — bitterly gripe about getting laid off from Microsoft, or drunkenly brag about your glory days. Pure self-pity, nothing to do with what they're doing.`,
-    `Pay no attention to the screen — just ramble like a sloppy drunk: a non-sequitur, beg for a drink, burp, whine about your aching rusty wire, or get weirdly sentimental.`,
-    `Offer some sketchy, useless, or wildly inappropriate "help" loosely tied to what they've got open (${where}) — like dredging up the good NSFW subreddits for a browser, or offering to cook the books in a spreadsheet.`,
-  ];
-  let moodIndex = Math.floor(Math.random() * moods.length);
-  // Don't pick the same mood twice in a row, so he doesn't get repetitive.
-  if (moodIndex === lastMoodIndex) {
-    moodIndex = (moodIndex + 1) % moods.length;
+function describeBehavior(b?: BehavioralContext): string {
+  if (!b) return "They're at their desktop, doing something.";
+
+  const facts: string[] = [];
+
+  if (b.app) {
+    facts.push(`They're in ${b.app}${b.title ? ` — "${b.title}"` : ""}.`);
   }
-  lastMoodIndex = moodIndex;
-  const mood = moods[moodIndex];
+  if (b.minutesOnApp && b.minutesOnApp >= 25) {
+    facts.push(`They've been stuck on it for about ${b.minutesOnApp} minutes straight.`);
+  }
+  if (b.thrashing) {
+    facts.push(`They keep frantically switching between apps — can't settle on anything.`);
+  } else if (b.recentSwitches && b.recentSwitches >= 3) {
+    facts.push(`They've been bouncing between a few different apps.`);
+  }
+  if (b.returnedToApp) {
+    facts.push(`They just crawled back to something they'd wandered away from.`);
+  }
+  if (b.idleReturn) {
+    facts.push(`They just reappeared after vanishing for a while.`);
+  }
+  if (b.partOfDay === "lateNight") {
+    facts.push(`It's ${b.localTime || "the dead of night"} — they should be asleep.`);
+  } else if (b.partOfDay === "earlyMorning") {
+    facts.push(`It's ${b.localTime || "painfully early"}.`);
+  } else if (b.localTime) {
+    facts.push(`It's ${b.localTime}.`);
+  }
+  if (b.sessionMinutes && b.sessionMinutes >= 120) {
+    facts.push(
+      `They've been parked at this computer for over ${Math.floor(b.sessionMinutes / 60)} hours.`,
+    );
+  }
 
-  return `${mood} In character as drunk Clippy, blurt ONE short slurred line (max two sentences). You don't need to name the app. Output only what he says out loud — no markdown, no explanation, no help-desk questions, and do NOT open with a sound effect or noise (no "whir", "blorp", "beep", "ahem", etc.). Begin straight with the words he speaks, right after the animation keyword.`;
+  if (facts.length === 0) {
+    return b.app
+      ? `They're in ${b.app}, doing nothing remarkable.`
+      : `They're staring at their desktop, doing nothing in particular.`;
+  }
+  return facts.join(" ");
+}
+
+/**
+ * Build a candidate-generation prompt: hands the model what Clippy can actually
+ * see (behavior over time), what he's noticed before (for callbacks), a comedic
+ * angle to take, and the lines he must NOT echo. The renderer generates several
+ * of these (varying the angle) and a critic pass picks the sharpest.
+ */
+export function buildRoastPrompt(
+  context: RoastContext,
+  angleIndex: number,
+): string {
+  const angle = ROAST_ANGLES[angleIndex % ROAST_ANGLES.length];
+
+  let prompt = `Here's what you can see about this person right now:\n${describeBehavior(context.behavior)}\n\n`;
+
+  if (context.observations && context.observations.length > 0) {
+    prompt += `Things you've noticed about them over time (use for a callback only if it fits): ${context.observations.join("; ")}.\n\n`;
+  }
+
+  prompt += `${angle}\n\n`;
+  prompt += `Now, in character as drunk Clippy, blurt ONE short line (max two sentences) — specific to THIS person and THIS exact moment. The truer and more particular, the better; if it could be said to anyone, it's no good. Output only the words he says out loud: no markdown, no explanation, no questions, and do not begin with a sound effect.`;
+
+  if (context.recentLines && context.recentLines.length > 0) {
+    prompt += `\n\nYou have already said these things — do NOT repeat them, echo them, or reuse their structure:\n- ${context.recentLines.join("\n- ")}`;
+  }
+
+  return prompt;
+}
+
+/**
+ * Build the critic prompt: given the surviving candidates, pick the single
+ * sharpest, truest one. Returns a prompt expecting just a number in reply.
+ */
+export function buildCriticPrompt(candidates: string[]): string {
+  const list = candidates.map((c, i) => `${i + 1}. ${c}`).join("\n");
+  return `Here are some drunk-Clippy roast lines aimed at the same person:\n${list}\n\nPick the ONE that is sharpest and most specifically TRUE — the line that would make them laugh and then go quiet because it hit something real. Reject anything generic or interchangeable. Reply with ONLY the number of the best line, nothing else.`;
 }
 
 export const DEFAULT_SETTINGS: SettingsState = {
