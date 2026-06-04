@@ -17,6 +17,9 @@ const SAMPLE_INTERVAL = 5_000;
 const IDLE_THRESHOLD_S = 90; // away this long counts as "gone"
 const THRASH_WINDOW_MS = 5 * 60_000;
 const THRASH_COUNT = 6; // app switches within the window = "thrashing"
+// Enumerating ALL open windows is heavier than reading the active one, so do it
+// only every Nth sample (~30s).
+const OPEN_WINDOWS_EVERY = 6;
 
 let sampleTimer: NodeJS.Timeout | undefined;
 
@@ -29,9 +32,37 @@ let switchTimes: number[] = [];
 const seenApps = new Set<string>();
 let pendingReturnedToApp = false;
 let pendingIdleReturn = false;
+let currentOpenApps: string[] = [];
+let sampleCount = 0;
 
 function isClippy(app?: string): boolean {
   return !!app && /clippy|electron/i.test(app);
+}
+
+/**
+ * The distinct apps the user has open right now (names only — no titles, for
+ * privacy). A read on who they are: their toolbelt and their distractions.
+ */
+async function sampleOpenWindows(): Promise<void> {
+  try {
+    const { openWindows } = await import("get-windows");
+    const wins = await openWindows({
+      screenRecordingPermission: false, // we only want app names, not titles
+      accessibilityPermission: false,
+    });
+    const apps: string[] = [];
+    const seen = new Set<string>();
+    for (const w of wins) {
+      const name = w.owner?.name;
+      if (!name || isClippy(name) || seen.has(name)) continue;
+      seen.add(name);
+      apps.push(name);
+      if (apps.length >= 12) break;
+    }
+    currentOpenApps = apps;
+  } catch {
+    // ignore — keep the last list
+  }
 }
 
 async function readActiveWindow(): Promise<
@@ -78,6 +109,12 @@ async function sample(): Promise<void> {
   }
   lastWasIdle = isIdle;
   if (isIdle) return; // don't watch what isn't happening
+
+  // Refresh the "who they are" open-windows list occasionally (it's heavier).
+  if (sampleCount % OPEN_WINDOWS_EVERY === 0) {
+    await sampleOpenWindows();
+  }
+  sampleCount += 1;
 
   const win = await readActiveWindow();
   if (!win || isClippy(win.app)) return; // ignore ourselves
@@ -135,12 +172,26 @@ function maybeRecordObservations(ctx: BehavioralContext): void {
   }
 }
 
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
 function snapshot(consume: boolean): BehavioralContext {
   const now = Date.now();
   const d = new Date();
   const recentSwitches = switchTimes.filter(
     (t) => now - t <= THRASH_WINDOW_MS,
   ).length;
+  const dayIndex = d.getDay();
+  const isWeekend = dayIndex === 0 || dayIndex === 6;
+  const hour = d.getHours();
+  const isWorkHours = !isWeekend && hour >= 9 && hour < 18;
 
   const ctx: BehavioralContext = {
     app: currentApp,
@@ -155,6 +206,10 @@ function snapshot(consume: boolean): BehavioralContext {
     sessionMinutes: Math.floor((now - sessionStart) / 60_000),
     partOfDay: partOfDay(d.getHours()),
     localTime: formatTime(d),
+    dayOfWeek: DAY_NAMES[dayIndex],
+    isWeekend,
+    isWorkHours,
+    otherApps: currentOpenApps.filter((a) => a !== currentApp).slice(0, 8),
   };
 
   if (consume) {

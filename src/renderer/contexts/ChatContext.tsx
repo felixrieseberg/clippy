@@ -19,6 +19,8 @@ import {
   mentionsForeignActivity,
   inventsUnknowableDetail,
   repeatsTime,
+  claimsWrongTime,
+  listsOpenApps,
   DEFAULT_SYSTEM_PROMPT,
   ROAST_ANGLES,
   ROAST_ANGLE_ANIMATIONS,
@@ -63,8 +65,12 @@ function readingTimeMs(text: string): number {
 // The "writers' room": generate several candidates from different comedic
 // angles, drop the generic/repeated ones, then a critic picks the sharpest.
 const CANDIDATE_COUNT = 3;
-const PER_CANDIDATE_TIMEOUT_MS = 5_000;
-const CRITIC_TIMEOUT_MS = 4_000;
+// Generous enough that the model can finish a one-liner even right after a cold
+// load — a too-tight cap aborts mid-sentence ("Your browser's…"). Truncated
+// output is also rejected downstream (looksLikeJunk), so this only affects how
+// often we fall back, never whether a cut-off fragment gets shown.
+const PER_CANDIDATE_TIMEOUT_MS = 10_000;
+const CRITIC_TIMEOUT_MS = 6_000;
 // Hotter than normal so candidates diverge instead of rephrasing each other.
 const CANDIDATE_TEMPERATURE = 0.95;
 
@@ -270,9 +276,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       !!text &&
       !looksLikeJunk(text) &&
       isNovel(text, against) &&
-      !mentionsForeignActivity(text, activeCtx.app, activeCtx.title) &&
+      !mentionsForeignActivity(
+        text,
+        activeCtx.app,
+        activeCtx.title,
+        activeCtx.behavior?.otherApps,
+      ) &&
       !inventsUnknowableDetail(text) &&
-      !repeatsTime(text);
+      !repeatsTime(text) &&
+      !claimsWrongTime(text, activeCtx.behavior) &&
+      !listsOpenApps(text, activeCtx.behavior?.otherApps);
 
     if (useCloudRef.current) {
       // CLOUD BRAIN (Claude). Fast, so just grab fresh context and go. One
@@ -335,14 +348,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const text = trimToRoast(raw);
           if (!text || looksLikeJunk(text)) continue;
           if (!isNovel(text, [...recentLines, ...keptText])) continue;
-          // Reject lines that misdescribe what they're doing (immersion-break);
-          // off-screen rambling about himself passes fine.
-          if (mentionsForeignActivity(text, activeCtx.app, activeCtx.title))
+          // Reject lines that invent an activity they don't actually have open
+          // (immersion-break); the active app + other open apps are all fair.
+          if (
+            mentionsForeignActivity(
+              text,
+              activeCtx.app,
+              activeCtx.title,
+              activeCtx.behavior?.otherApps,
+            )
+          )
             continue;
           // Reject invented specifics he couldn't know (head counts, etc.).
           if (inventsUnknowableDetail(text)) continue;
           // Reject lines that state the time twice (reads as broken).
           if (repeatsTime(text)) continue;
+          // Reject a fabricated time / night-trope when it's not actually late.
+          if (claimsWrongTime(text, activeCtx.behavior)) continue;
+          // Reject lines that just enumerate the open apps (name-dropping).
+          if (listsOpenApps(text, activeCtx.behavior?.otherApps)) continue;
 
           kept.push({
             text,

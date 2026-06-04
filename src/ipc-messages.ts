@@ -93,6 +93,18 @@ export type BehavioralContext = {
   partOfDay?: PartOfDay;
   /** Human-readable local time, e.g. "2:47am". */
   localTime?: string;
+  /** Day name, e.g. "Tuesday". */
+  dayOfWeek?: string;
+  /** Saturday or Sunday. */
+  isWeekend?: boolean;
+  /** Roughly a weekday during 9–6 — so gaming/slacking reads as during work. */
+  isWorkHours?: boolean;
+  /**
+   * Other apps the user has open right now (distinct names, not the active one,
+   * never Clippy). A read on WHO they are — their toolbelt and distractions.
+   * App names only, never titles (privacy).
+   */
+  otherApps?: string[];
 };
 
 /**

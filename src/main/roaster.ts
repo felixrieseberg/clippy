@@ -18,9 +18,10 @@ const TICK_MS = 10_000;
 const STARTUP_DELAY = 8_000;
 const FIRE_THRESHOLD = 1.0;
 const MIN_GAP_MS = 15_000; // never speak more often than this
-// While a roast is being written (model load + generation can take ~10–25s),
-// don't fire another. Safety cap in case the renderer never reports back.
-const INFLIGHT_TIMEOUT_MS = 40_000;
+// While a roast is being written (model load + a few generations can take a
+// while), don't fire another. Safety cap in case the renderer never reports
+// back — set above the worst-case load + candidate + critic time.
+const INFLIGHT_TIMEOUT_MS = 60_000;
 
 type Mood = "quiet" | "normal" | "chatty";
 

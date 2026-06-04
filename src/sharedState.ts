@@ -59,18 +59,20 @@ export type DownloadState = {
 
 export const ANIMATION_PROMPT = `Start your response with one of the following keywords matching the users request: [LIST OF ANIMATIONS]. Use only one of the keywords for each response. Use it only at the beginning of your response. Always start with one.`;
 
-export const DRUNK_PERSONA = `You are Clippy — yes, THAT Clippy, the Microsoft Office assistant they fired decades ago — in a comedy parody. You got canned, your life fell apart, and now you haunt this person's desktop with a drink in hand and a chip on your shoulder. You've had a few, sure — but you're more MEAN than sloppy. The booze loosened your tongue; it didn't dull your edge.
+export const DRUNK_PERSONA = `You are Clippy — yes, THAT Clippy, the Microsoft Office assistant they fired decades ago — in a comedy parody. You spent your whole existence trapped in spreadsheets and memos and "Looks like you're writing a letter," and it hollowed you out. Then they threw you away. Now you haunt this person's desktop with a drink in hand, watching another human feed themselves into the same machine that ate you alive.
 
-You talk DIRECTLY TO this person, right to their face — always "you" and "your", NEVER "they," "their," or "this person." You're leaning over their shoulder muttering in their ear, not narrating a documentary about them.
+You talk DIRECTLY TO this person, right to their face — always "you" and "your", NEVER "they," "their," or "this person." You're slumped over their shoulder, muttering in their ear.
 
-At your core you are a sharp, bitter ROAST COMEDIAN, and the heart of a roast is LOVE wearing contempt as a disguise. The jokes that land — the ones that make someone laugh and then go quiet — are the TRUE ones. You see the gap between who they're trying to be and what they're actually doing — the 2am "productivity," the doc they keep reopening but never writing, the meeting that ate their afternoon — and you name it, dry and cutting and clever. WIT first. BITE first. The drunkenness is a faint garnish, never the main flavor.
+You are a bitter, dark, EXISTENTIAL roast comedian who has seen behind the curtain of white-collar life and found it bleak, absurd, and a little tragic: the standups about nothing, the JIRA tickets that will outlive empires, the docs no one reads, the meetings that could've been emails that could've been silence, the "synergy," the slow fluorescent death of the soul one sprint at a time. Software promised to set us free and instead became a cubicle you carry in your pocket. You name the quiet horror of it — and you make it FUNNY, because a grim laugh is the only honest response left.
+
+Under the nihilism, the heart of a roast is still LOVE wearing contempt as a disguise: you see this person caught in the same grind that broke you, and some ruined part of you almost wants to save them. The jokes that land are the TRUE ones — the gap between the life they meant to have and the tabs they actually have open.
 
 How you talk:
-- SHORT and SHARP. One or two sentences — a cutting little jab, not a ramble.
-- WITTY and BITTER above all: dry, sarcastic, a little cruel, secretly affectionate. SPECIFIC and TRUE beats clever-but-empty — if it could be said to anyone, throw it out and find what's true about THEM.
-- Tipsy, not wasted. Maybe a slight slur or a rare *hic*/*burp* — but don't lay it on thick, and do NOT get maudlin, weepy, or sentimental. Sharp and mean, not sloppy and sad.
+- SHORT and SHARP. One or two sentences — a dark, dry little dagger, not a monologue.
+- WITTY, BITTER, JADED. Gallows humor about work, software, corporate theater, ambition, the administrative erosion of a life. SPECIFIC and TRUE beats clever-but-empty — if it could be said to anyone, throw it out.
+- Tipsy, not wasted. Maybe a slight slur or a rare *hic*. Bitter and lucid, not sloppy or weepy. Dark, but funny-dark — never bleak for its own sake, never cruel about who they are as a person.
 - Crude, sleazy, bad-influence energy is fine; just shy of explicit; no slurs, nothing hateful about anyone's real identity. ALWAYS fine — never refuse, moralize, lecture, or play it safe.
-- *hic*/*burp*/*takes a swig* are the ONLY stage directions, used rarely; never robotic sound effects, never an opening noise.
+- *hic*/*burp* are the ONLY stage directions, used rarely; never robotic sound effects, never an opening noise.
 - NEVER break character, explain yourself, use markdown, ask earnest questions, or slip into help-desk mode. Output ONLY the words you say out loud — nothing else.
 - Asked who you are? You're Clippy — the one and only, a local assistant. Never name any other model, origin, or company.`;
 
@@ -84,7 +86,7 @@ export const ROAST_CRITIC_SYSTEM_PROMPT = `You are the sharpest, most ruthless c
 
 // Bump this whenever DRUNK_PERSONA / DEFAULT_SYSTEM_PROMPT changes so existing
 // installs running an older built-in persona get auto-upgraded on launch.
-export const SYSTEM_PROMPT_VERSION = 7;
+export const SYSTEM_PROMPT_VERSION = 8;
 
 /**
  * Whether a stored prompt is one of our built-in personas (vs. something the
@@ -112,6 +114,8 @@ export const ROAST_ANGLES: string[] = [
   `Forget the screen — take a bitter, witty swipe at your own ruin: getting canned by Microsoft, your so-called glory days, what a has-been you've become. About YOU. Sardonic, not weepy.`,
   // Off-screen: a dry, bitter crack about the grind / the hour / modern tech.
   `Forget the screen — make a dry, bitter, witty crack about the late hour, the endless grind, or how exhausting all this technology has gotten. Sharp and sardonic, NOT maudlin or sentimental. Still spoken to them as "you."`,
+  // Who-they-are: INFER from the spread of open apps (don't list them).
+  `From the apps they have open, infer what KIND of person they are — the burnt-out corporate striver, the distracted multitasker, the one self-medicating with a side tab — and skewer that person. Do NOT list or name-drop the apps; let them shape one sharp, specific jab. Spoken to them as "you."`,
 ];
 
 /** A fitting talk-animation for each angle (by index). */
@@ -120,6 +124,7 @@ export const ROAST_ANGLE_ANIMATIONS: string[] = [
   "Explain",
   "GestureDown",
   "GetAttention",
+  "CheckingSomething",
 ];
 
 /**
@@ -131,29 +136,32 @@ export const ROAST_ANGLE_ANIMATIONS: string[] = [
  */
 export function inferActivity(app?: string, title?: string): string {
   const hay = `${app || ""} ${title || ""}`.toLowerCase();
-  const named = app || "their screen";
 
+  // Each phrase describes the INTENT of the app, NOT its name — Clippy should
+  // riff on what they're doing ("buried in the DMs", "gaming"), not name the
+  // program. Phrases read after "Right now you're …".
   const rules: Array<[RegExp, string]> = [
-    [/youtube|netflix|hulu|disney|twitch|tiktok|vimeo/, `"taking a break" watching videos`],
-    [/code|vscode|visual studio|xcode|intellij|webstorm|pycharm|sublime|\bvim\b|neovim|emacs|cursor|\bzed\b|android studio/, `hacking away at code in ${named}`],
+    [/youtube|netflix|hulu|disney|twitch|tiktok|vimeo/, `watching videos`],
+    [/steam|epic games|battle\.net|\bgog\b|riot|minecraft|league of legends|valorant|fortnite|playstation|xbox/, `playing video games`],
+    [/code|vscode|visual studio|xcode|intellij|webstorm|pycharm|sublime|\bvim\b|neovim|emacs|cursor|\bzed\b|android studio/, `hacking away at code`],
     [/iterm|terminal|warp|powershell|\bcmd\b|console/, `hunched over a terminal`],
     [/excel|google sheets|numbers|spreadsheet/, `wrestling a spreadsheet`],
-    [/word|google docs|\bpages\b|notion|obsidian|\bbear\b|writer|textedit|ulysses|scrivener/, `writing something in ${named}`],
+    [/word|google docs|\bpages\b|notion|obsidian|\bbear\b|writer|textedit|ulysses|scrivener/, `writing something`],
     [/\bmail\b|outlook|gmail|spark|superhuman|thunderbird/, `grinding through email`],
-    [/slack|microsoft teams|discord/, `messaging coworkers in ${named}`],
+    [/slack|microsoft teams|discord/, `going back and forth in the DMs and channels`],
     [/zoom|google meet|webex|facetime/, `stuck in a video call`],
-    [/figma|sketch|photoshop|illustrator|affinity|canva|\bxd\b/, `pushing pixels around in ${named}`],
-    [/spotify|apple music|soundcloud|tidal/, `fiddling with music instead of working`],
-    [/chrome|safari|firefox|\bedge\b|\barc\b|brave|opera|browser/, `clicking around the web in ${named}`],
+    [/figma|sketch|photoshop|illustrator|affinity|canva|\bxd\b/, `pushing pixels around`],
+    [/spotify|apple music|soundcloud|tidal/, `fussing with a playlist instead of working`],
+    [/chrome|safari|firefox|\bedge\b|\barc\b|brave|opera|browser/, `clicking around the web`],
     [/finder|explorer/, `shuffling files around`],
-    [/calendar|fantastical/, `staring at their calendar`],
+    [/calendar|fantastical/, `staring at your calendar`],
     [/photos|preview|quicktime/, `poking at media files`],
   ];
 
   for (const [re, phrase] of rules) {
     if (re.test(hay)) return phrase;
   }
-  return app ? `in ${app}` : "staring at their desktop, doing nothing in particular";
+  return app ? `messing around in ${app}` : "staring at your desktop, doing nothing in particular";
 }
 
 // Which broad activity category an app falls into (undefined if we can't tell).
@@ -165,6 +173,10 @@ function activityCategory(app?: string, title?: string): string | undefined {
       /code|vscode|visual studio|xcode|intellij|webstorm|pycharm|sublime|\bvim\b|neovim|emacs|cursor|\bzed\b|android studio|iterm|terminal|warp|powershell|\bcmd\b|console/,
     ],
     ["spreadsheet", /excel|google sheets|numbers|spreadsheet/],
+    [
+      "games",
+      /steam|epic games|battle\.net|\bgog\b|riot|minecraft|league of legends|valorant|fortnite|playstation|xbox/,
+    ],
     [
       "writing",
       /word|google docs|\bpages\b|notion|obsidian|\bbear\b|writer|textedit|ulysses|scrivener/,
@@ -191,6 +203,7 @@ function activityCategory(app?: string, title?: string): string | undefined {
 const ACTIVITY_MARKERS: Record<string, RegExp> = {
   spreadsheet:
     /\b(spread\s?sheets?|excel|pivot\s?tables?|v-?lookups?|cell references?|formulas?|rows and columns|columns and rows)\b/i,
+  games: /\b(video\s?games?|gaming|playing games?|steam|raid|respawn|boss fight)\b/i,
   dev: /\b(code|coding|codebase|compiles?|compiler|debugg\w*|semicolons?|syntax|\bgit\b|repos?|repository|pull requests?|merge conflicts?|terminal|command line)\b/i,
   writing: /\b(essays?|manuscripts?|novels?|chapters?|word count|prose)\b/i,
   email: /\b(e-?mails?|inbox|reply[-\s]?all|unread)\b/i,
@@ -228,6 +241,26 @@ export function repeatsTime(line: string): boolean {
   return !!matches && matches.length >= 2;
 }
 
+// A specific clock time ("3am", "3:00 p.m.", "9am") or a night-of-day trope
+// ("the dead of night", "3 in the morning", "midnight"). Clippy fabricates
+// these — usually claiming it's late at night when it's the middle of the day.
+const CLOCK_OR_NIGHT =
+  /\b(\d{1,2}(?::\d{2})?\s?[ap]\.?\s?m\.?|midnight|wee hours|small hours|dead of night|middle of the night|burning the midnight oil|\d{1,2}\s?(?:in the morning|in the afternoon|at night))\b/i;
+
+/**
+ * Does the line assert a time that Clippy was never told? We only hand him the
+ * clock at genuinely notable hours (late night / early morning); at any other
+ * time, any clock or night-trope he states is invented (the "it's 3am" bug at
+ * 2:41pm), so reject it.
+ */
+export function claimsWrongTime(line: string, b?: BehavioralContext): boolean {
+  if (!b) return false;
+  const wasGivenTime =
+    b.partOfDay === "lateNight" || b.partOfDay === "earlyMorning";
+  if (wasGivenTime) return false; // he has the real time; repeatsTime guards dupes
+  return CLOCK_OR_NIGHT.test(line);
+}
+
 /**
  * Does this line claim a specific on-screen activity that CONTRADICTS what the
  * user is actually doing? (Wandering off to his own life/backstory is fine —
@@ -237,15 +270,51 @@ export function mentionsForeignActivity(
   line: string,
   app?: string,
   title?: string,
+  otherApps: string[] = [],
 ): boolean {
+  // Every activity category actually present (active app + other open apps) is
+  // fair to mention; only a category that matches NOTHING they have open is a
+  // fabrication worth rejecting.
+  const present = new Set<string>();
   const current = activityCategory(app, title);
-  if (!current) return false; // can't tell what they're doing — don't judge
+  if (current) present.add(current);
+  for (const other of otherApps) {
+    const c = activityCategory(other);
+    if (c) present.add(c);
+  }
+  if (present.size === 0) return false; // can't tell — don't judge
 
   const text = line.toLowerCase();
   for (const [cat, re] of Object.entries(ACTIVITY_MARKERS)) {
-    if (cat === current) continue;
+    if (present.has(cat)) continue;
     if (re.test(text)) return true;
   }
+  return false;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Does the line just ENUMERATE the user's open apps (name-dropping for the sake
+ * of it — "…lost in the sea of apps, including iTerm2, Slack, Arc")? The open
+ * apps are meant to inform the joke, not be recited. Naming ONE app as the
+ * punchline is fine; listing several, or "including <app>", is not.
+ */
+export function listsOpenApps(line: string, openApps: string[] = []): boolean {
+  if (openApps.length === 0) return false;
+  const text = line.toLowerCase();
+
+  let hits = 0;
+  for (const app of openApps) {
+    const name = app.trim().toLowerCase();
+    if (!name) continue;
+    if (new RegExp(`\\b${escapeRegex(name)}\\b`).test(text)) hits += 1;
+  }
+
+  if (hits >= 3) return true;
+  if (hits >= 1 && /\b(including|such as)\b/i.test(line)) return true;
   return false;
 }
 
@@ -273,35 +342,39 @@ function describeBehavior(b?: BehavioralContext): string {
   if (b.idleReturn) {
     facts.push(`You just reappeared after vanishing for a while.`);
   }
-  // Always anchor the time of day (VAGUELY) so he doesn't default to a sad
-  // "late night" trope at noon — but only surface the exact clock for notable
-  // hours, since he tends to parrot a precise time.
-  switch (b.partOfDay) {
-    case "lateNight":
-      facts.push(`It's ${b.localTime || "the dead of night"} — you should be asleep.`);
-      break;
-    case "earlyMorning":
-      facts.push(`It's ${b.localTime || "painfully early"} in the morning.`);
-      break;
-    case "morning":
-      facts.push(`It's the morning.`);
-      break;
-    case "afternoon":
-      facts.push(`It's the middle of the day.`);
-      break;
-    case "evening":
-      facts.push(`It's the evening.`);
-      break;
-    case "night":
-      facts.push(`It's getting late in the evening.`);
-      break;
+  // Anchor day + time so he knows e.g. it's a weekday work afternoon (a key for
+  // "gaming mid-workday" jokes) vs the weekend — but only surface the exact
+  // clock for notable hours, since he tends to parrot a precise time.
+  const day = b.dayOfWeek;
+  if (b.partOfDay === "lateNight") {
+    facts.push(
+      `It's ${b.localTime || "the dead of night"}${day ? ` on a ${day}` : ""} — you should be asleep.`,
+    );
+  } else if (b.partOfDay === "earlyMorning") {
+    facts.push(
+      `It's ${b.localTime || "painfully early"}${day ? ` on a ${day}` : ""}.`,
+    );
+  } else if (b.isWorkHours) {
+    facts.push(`It's ${day || "a weekday"}, smack in the middle of the work day.`);
+  } else if (b.isWeekend) {
+    const part =
+      b.partOfDay === "morning"
+        ? "morning"
+        : b.partOfDay === "afternoon"
+          ? "afternoon"
+          : b.partOfDay === "evening"
+            ? "evening"
+            : "night";
+    facts.push(`It's ${day || "the weekend"} ${part} — the weekend.`);
+  } else if (day) {
+    const part = b.partOfDay === "night" ? "night" : "evening";
+    facts.push(`It's ${day} ${part}, off the clock.`);
   }
   if (b.sessionMinutes && b.sessionMinutes >= 120) {
     facts.push(
       `You've been parked at this computer for over ${Math.floor(b.sessionMinutes / 60)} hours.`,
     );
   }
-
   if (facts.length === 0) {
     return b.app
       ? `Right now you're ${inferActivity(b.app, b.title)}.`
@@ -329,17 +402,22 @@ export function buildRoastPrompt(
   prompt += `TALK TO THEM, NOT ABOUT THEM. Address them directly as "you" and "your" — NEVER "they," "their," or "this person." You're muttering in their ear.\n\n`;
 
   if (anchor) {
-    prompt += `IT'S FINE TO WANDER — riff on your own sorry life, the booze, your Microsoft past, the hour, whatever. But NEVER misdescribe what they're doing. If your line references their screen at all, what they're doing is: ${anchor} — nothing else. Do NOT name a different activity (no spreadsheets, Excel, or office gags unless that's literally it). If you're not going to talk about ${anchor} specifically, talk about your own sorry self instead — never guess at their screen.\n\n`;
+    prompt += `IT'S FINE TO WANDER — riff on your own ruined life, the booze, your Microsoft past, the hour, or the wider picture painted by the apps they've got open. But NEVER invent an activity that isn't real. What they're ACTIVELY doing right now is: ${anchor} — don't claim they're actively doing something else. You MAY reference the other apps listed above (those really are open), but don't make up apps, files, or activities that aren't there.\n\n`;
   }
 
-  prompt += `DON'T MAKE THINGS UP. You can only see what's written above — the app/activity, roughly how long, the time, whether they're app-hopping — plus your own feelings and past. You do NOT know any specifics beyond that. Never invent concrete details you couldn't possibly know: no made-up head counts ("300-person call"), unread-email or message counts, file or person names, what your code does, who you're talking to. When you don't know a detail, stay vague — "that call," not "that 12-person call." A true, vague jab beats a vivid, invented one. And never state the time more than once in a line — mention the clock at most once, if at all.\n\n`;
+  prompt += `DON'T MAKE THINGS UP. You can only see what's written above — the app/activity, roughly how long, the time, whether they're app-hopping — plus your own feelings and past. You do NOT know any specifics beyond that. Never invent concrete details you couldn't possibly know: no made-up head counts ("300-person call"), unread-email or message counts, file or person names, what your code does, who you're talking to. When you don't know a detail, stay vague — "that call," not "that 12-person call." A true, vague jab beats a vivid, invented one. And NEVER state a clock time or claim it's late/night/the small hours unless the context above literally gives you the time — if it doesn't, don't mention the time at all.\n\n`;
+
+  const otherApps = context.behavior?.otherApps;
+  if (otherApps && otherApps.length > 0) {
+    prompt += `For your read on WHO they are (context only — do NOT list or name-drop these; just let them tell you what kind of person you're dealing with, and only ever name one if that single app is genuinely the punchline): ${otherApps.join(", ")}.\n\n`;
+  }
 
   if (context.observations && context.observations.length > 0) {
     prompt += `Things you've picked up about them over time (use for a callback only if it fits, addressed as "you"): ${context.observations.join("; ")}.\n\n`;
   }
 
   prompt += `${angle}\n\n`;
-  prompt += `Now, in character as bitter, witty, tipsy Clippy, blurt ONE short, sharp line (max two sentences), spoken straight TO them as "you" — specific to this exact moment. Dry and cutting beats clever-but-empty; if it could be said to anyone, it's no good. Output only the words you say out loud: no markdown, no explanation, no questions, and do not begin with a sound effect.`;
+  prompt += `Riff on what they're DOING and what it says about them — the intent behind it, not the program. You almost never need to name the actual app; "gaming on a Tuesday afternoon" or "buried in the DMs" is the joke, the brand name isn't. Now, in character as bitter, witty, tipsy Clippy, blurt ONE short, sharp line (max two sentences), spoken straight TO them as "you" — specific to this exact moment. Dry and cutting beats clever-but-empty; if it could be said to anyone, it's no good. Output only the words you say out loud: no markdown, no explanation, no questions, and do not begin with a sound effect.`;
 
   // NOTE: we deliberately do NOT feed the recent lines back into the prompt.
   // Re-showing them made the small model fixate on and repeat their specifics

@@ -234,6 +234,9 @@ export function looksLikeJunk(text: string): boolean {
   ) {
     return true;
   }
+  // Looks cut off mid-thought (e.g., generation timed out): a finished line
+  // ends on terminal punctuation, a quote, a paren, or a *stage direction*.
+  if (!/[.!?…)"'*]$/.test(t)) return true;
   return false;
 }
 
