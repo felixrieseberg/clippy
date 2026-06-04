@@ -71,6 +71,12 @@ const CANDIDATE_COUNT = 3;
 // often we fall back, never whether a cut-off fragment gets shown.
 const PER_CANDIDATE_TIMEOUT_MS = 10_000;
 const CRITIC_TIMEOUT_MS = 6_000;
+// The model is large, so reloading it every roast (load-on-demand) is slow.
+// Keep it warm for a bit after a roast for fast follow-ups, then unload to free
+// memory once you've gone quiet. Force a clean reload every few roasts so the
+// reused session doesn't accumulate too much conversation and drift.
+const KEEP_WARM_MS = 180_000;
+const FRESH_SESSION_EVERY = 3;
 // Hotter than normal so candidates diverge instead of rephrasing each other.
 const CANDIDATE_TEMPERATURE = 0.95;
 
@@ -167,6 +173,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const createOptionsRef = useRef<LanguageModelCreateOptions | null>(null);
   // Whether to use the user's Claude key (cloud) instead of the local model.
   const useCloudRef = useRef(!!settings.claudeApiKey?.trim());
+  // Keep-warm state for the local model (avoid reloading ~5GB every roast).
+  const modelWarmRef = useRef(false);
+  const roastsThisSessionRef = useRef(0);
+  const unloadTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
@@ -313,18 +323,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
       }
     } else if (baseOptions) {
-      // Reset the session ONCE per roast (anti-drift) and reuse it for every
-      // candidate + the critic. Reloading the model per candidate crashes the
-      // child process, so all generation happens as prompts in this one session.
+      // Load the model only when it's cold, or force a clean reload every few
+      // roasts so the reused (warm) session doesn't accumulate too much
+      // conversation and drift. Reloading ~5GB every single roast is too slow,
+      // so within the warm window we reuse the live session and just prompt it.
       let sessionReady = false;
       try {
-        await electronAi.create({
-          ...baseOptions,
-          temperature: CANDIDATE_TEMPERATURE,
-        });
+        const needsFreshLoad =
+          !modelWarmRef.current ||
+          roastsThisSessionRef.current >= FRESH_SESSION_EVERY;
+        if (needsFreshLoad) {
+          await electronAi.create({
+            ...baseOptions,
+            temperature: CANDIDATE_TEMPERATURE,
+          });
+          modelWarmRef.current = true;
+          roastsThisSessionRef.current = 0;
+        }
+        roastsThisSessionRef.current += 1;
         sessionReady = true;
       } catch {
-        // couldn't reset — we'll fall through to a hand-written line
+        // couldn't (re)load — fall through to a hand-written line
+        modelWarmRef.current = false;
       }
 
       if (sessionReady) {
@@ -434,11 +454,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // memory is best-effort
     }
 
-    // Unload the local model now (cloud mode never loaded one) — we're done
-    // with it until the next roast, which reloads on demand. This is what keeps
-    // Clippy from being a memory hog while he's just sitting there.
+    // Keep the local model warm briefly for fast follow-up roasts, then unload
+    // it once you've gone quiet — so it's not a memory hog at rest, but also not
+    // reloading ~5GB every minute. (Cloud mode never loaded a local model.)
     if (!useCloudRef.current) {
-      electronAi.destroy().catch(() => {});
+      if (unloadTimerRef.current) {
+        window.clearTimeout(unloadTimerRef.current);
+      }
+      unloadTimerRef.current = window.setTimeout(() => {
+        electronAi.destroy().catch(() => {});
+        modelWarmRef.current = false;
+        roastsThisSessionRef.current = 0;
+      }, KEEP_WARM_MS);
     }
 
     if (dismissTimerRef.current) {
@@ -500,15 +527,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // the active one (upgrading installs that were running an older default like
   // Gemma 1B). We only do this once so a deliberate manual choice later sticks.
   useEffect(() => {
-    if (settings.preferredModelApplied) {
+    if (settings.appliedDefaultModel === DEFAULT_MODEL_NAME) {
       return;
     }
 
     if (models[DEFAULT_MODEL_NAME]?.downloaded) {
       clippyApi.setState("settings.selectedModel", DEFAULT_MODEL_NAME);
-      clippyApi.setState("settings.preferredModelApplied", true);
+      clippyApi.setState("settings.appliedDefaultModel", DEFAULT_MODEL_NAME);
     }
-  }, [models, settings.preferredModelApplied]);
+  }, [models, settings.appliedDefaultModel]);
 
   // Subscribe to roast requests pushed from the main process.
   useEffect(() => {
