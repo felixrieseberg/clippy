@@ -283,6 +283,21 @@ export function stripLeadingSfx(text: string): string {
 }
 
 /**
+ * Strip matched surrounding quotes (straight or smart, a couple of layers),
+ * only when the string both begins and ends with a quote — so a contraction
+ * like "'bout time" isn't mangled.
+ */
+export function stripWrappingQuotes(s: string): string {
+  let t = s.trim();
+  for (let i = 0; i < 2; i++) {
+    const m = t.match(/^(["'“”‘’])([\s\S]*)(["'“”‘’])$/);
+    if (!m) break;
+    t = m[2].trim();
+  }
+  return t;
+}
+
+/**
  * Clip a model roast down to a muttered one-liner: strip leading sound effects
  * and stray markdown, collapse whitespace, and keep at most the first two
  * sentences.
@@ -292,6 +307,12 @@ export function trimToRoast(text: string): string {
     .replace(/[*_`#>]+/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  // Some models wrap the whole line in quotes ("Gaming on a Tuesday?"). Strip
+  // matched surrounding quotes (a few layers, straight or smart) — only when
+  // BOTH ends are quotes, so a line that legitimately starts with an apostrophe
+  // (e.g. 'bout time…) is left alone.
+  t = stripWrappingQuotes(t);
 
   // The markdown strip can expose a now-bare SFX (e.g. *whir* -> whir); peel
   // any that surfaced.
