@@ -58,7 +58,9 @@ export type ClippyApi = {
   offRoastContext: () => void;
   roastNow: () => Promise<void>;
   roastSpoken: (line: string) => Promise<void>;
+  getRoastContext: () => Promise<RoastContext>;
   clearMemory: () => Promise<void>;
+  generateCloud: (systemPrompt: string, userPrompt: string) => Promise<string>;
   // Permissions
   ensureScreenPermission: () => Promise<void>;
   // Clipboard

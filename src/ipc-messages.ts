@@ -47,8 +47,13 @@ export const IpcMessages = {
   ROAST_NOW: "clippy_roast_now",
   // Roaster (renderer -> main: here's the line he just said, remember it)
   ROAST_SPOKEN: "clippy_roast_spoken",
+  // Roaster (renderer -> main: give me the freshest context, right before I
+  // generate — so the roast reflects what they're doing NOW, post model-load)
+  GET_ROAST_CONTEXT: "clippy_get_roast_context",
   // Memory (renderer -> main: forget everything he's learned/said)
   CLEAR_MEMORY: "clippy_clear_memory",
+  // Cloud brain (renderer -> main: generate a roast via the user's Claude key)
+  GENERATE_CLOUD: "clippy_generate_cloud",
   // Permissions (renderer -> main: ask macOS for Screen Recording so Clippy
   // can read window titles)
   ENSURE_SCREEN_PERMISSION: "clippy_ensure_screen_permission",

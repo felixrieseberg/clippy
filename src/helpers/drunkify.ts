@@ -32,9 +32,10 @@ function mulberry32(seed: number): () => number {
 
 /**
  * @param text      The clean text to slur.
- * @param intensity 0 = sober (no change), 1 = falling-down drunk. Default 0.5.
+ * @param intensity 0 = sober (no change), 1 = falling-down drunk. Default 0.35
+ *                  — tipsy, not sloppy; the bite should read through, not mush.
  */
-export function drunkify(text: string, intensity = 0.5): string {
+export function drunkify(text: string, intensity = 0.35): string {
   if (!text || intensity <= 0) return text;
 
   const rng = mulberry32(hashSeed(text));
@@ -51,9 +52,9 @@ export function drunkify(text: string, intensity = 0.5): string {
     if (chance(0.3)) {
       w = w.replace(/s/, (m) => (m === "S" ? "Sh" : "sh"));
     }
-    // Stretch a vowel: reeeally.
+    // Stretch a vowel a touch: reaally (doubled, not tripled — subtler).
     if (chance(0.28)) {
-      w = w.replace(/[aeiou]/i, (m) => m + m + m);
+      w = w.replace(/[aeiou]/i, (m) => m + m);
     }
     if (w !== tok) slurCount++;
     return w;
@@ -71,7 +72,7 @@ export function drunkify(text: string, intensity = 0.5): string {
       }
     });
     if (longest >= 0) {
-      slurred[longest] = slurred[longest].replace(/[aeiou]/i, (m) => m + m + m);
+      slurred[longest] = slurred[longest].replace(/[aeiou]/i, (m) => m + m);
     }
   }
 

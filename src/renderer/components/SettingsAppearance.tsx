@@ -105,6 +105,38 @@ export const SettingsAppearance: React.FC = () => {
           Make Clippy Forget Everything
         </button>
       </fieldset>
+      <fieldset>
+        <legend>Clippy's Brain</legend>
+        <div className="field-row-stacked" style={{ width: "100%" }}>
+          <label htmlFor="claudeApiKey">
+            Anthropic API key (optional — for much sharper wit)
+          </label>
+          <input
+            id="claudeApiKey"
+            type="password"
+            placeholder="sk-ant-…"
+            value={settings.claudeApiKey || ""}
+            onChange={(event) => {
+              clippyApi.setState(
+                "settings.claudeApiKey",
+                event.target.value.trim(),
+              );
+            }}
+          />
+        </div>
+        <p style={{ fontSize: 11, lineHeight: 1.4, marginTop: 6 }}>
+          By default Clippy thinks <strong>locally and offline</strong> — private,
+          but only as witty as a small model can be. Paste an{" "}
+          <strong>Anthropic API key</strong> and his brain becomes Claude: far
+          sharper, and the heavy local model isn't loaded at all.
+          <br />
+          <br />
+          The trade-off: in this mode, what Clippy sees (the app/activity context
+          — never sensitive or incognito titles) is <strong>sent to Anthropic</strong>{" "}
+          to write each line, and it uses your API credits. The key is stored
+          locally on this machine. Clear the box to go back to fully local.
+        </p>
+      </fieldset>
       <button style={{ marginTop: 10 }} onClick={onReset}>
         Reset
       </button>

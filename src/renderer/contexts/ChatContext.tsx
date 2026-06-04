@@ -17,9 +17,11 @@ import {
   buildRoastPrompt,
   buildCriticPrompt,
   mentionsForeignActivity,
+  inventsUnknowableDetail,
+  repeatsTime,
+  DEFAULT_SYSTEM_PROMPT,
   ROAST_ANGLES,
   ROAST_ANGLE_ANIMATIONS,
-  ROAST_CRITIC_SYSTEM_PROMPT,
 } from "../../sharedState";
 import { DEFAULT_MODEL_NAME } from "../../models";
 import { RoastContext } from "../../ipc-messages";
@@ -30,10 +32,7 @@ import {
   TALK_ANIMATIONS,
 } from "../clippy-lines";
 
-import type {
-  LanguageModelPrompt,
-  LanguageModelCreateOptions,
-} from "@electron/llm";
+import type { LanguageModelCreateOptions } from "@electron/llm";
 
 type ClippyNamedStatus = "welcome" | "idle" | "responding" | "thinking";
 
@@ -105,14 +104,12 @@ function isNovel(line: string, against: string[]): boolean {
 }
 
 /**
- * Run a single generation against a freshly-reset session and return the raw
- * text. Aborts (and returns what it has) after `timeoutMs`.
+ * Send one prompt to the ALREADY-LOADED session and return the raw text. Aborts
+ * (and returns what it has) after `timeoutMs`. Does NOT create/reload the model
+ * — the caller resets the session once per roast; reloading per candidate
+ * thrashes the node-llama-cpp child process (load→crash loop).
  */
-async function generateOnce(
-  options: LanguageModelCreateOptions,
-  prompt: string,
-  timeoutMs: number,
-): Promise<string> {
+async function promptOnce(prompt: string, timeoutMs: number): Promise<string> {
   let out = "";
   const requestUUID = crypto.randomUUID();
   let timedOut = false;
@@ -126,7 +123,6 @@ async function generateOnce(
   }, timeoutMs);
 
   try {
-    await electronAi.create(options);
     const response = await window.electronAi.promptStreaming(prompt, {
       requestUUID,
     });
@@ -163,6 +159,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // The options the model session was created with, so a roast can reset the
   // conversation to a clean slate (no accumulated drift) before prompting.
   const createOptionsRef = useRef<LanguageModelCreateOptions | null>(null);
+  // Whether to use the user's Claude key (cloud) instead of the local model.
+  const useCloudRef = useRef(!!settings.claudeApiKey?.trim());
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
@@ -172,45 +170,64 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     soundEnabledRef.current = settings.soundEnabled !== false;
   }, [settings.soundEnabled]);
+  useEffect(() => {
+    useCloudRef.current = !!settings.claudeApiKey?.trim();
+  }, [settings.claudeApiKey]);
 
   const getSystemPrompt = useCallback(() => {
-    return settings.systemPrompt.replace(
+    // settings.systemPrompt is undefined until the full state loads over IPC;
+    // fall back to the default so calling this during the first render (e.g. to
+    // seed systemPromptRef) can't throw.
+    return (settings.systemPrompt || DEFAULT_SYSTEM_PROMPT).replace(
       "[LIST OF ANIMATIONS]",
       ANIMATION_KEYS_BRACKETS.join(", "),
     );
   }, [settings.systemPrompt]);
 
-  const loadModel = useCallback(
-    async (initialPrompts: LanguageModelPrompt[] = []) => {
-      setIsModelLoaded(false);
+  // The persona system prompt, kept current for the cloud path (which may run
+  // even when no local model is selected).
+  const systemPromptRef = useRef(getSystemPrompt());
+  useEffect(() => {
+    systemPromptRef.current = getSystemPrompt();
+  }, [getSystemPrompt]);
 
-      const options: LanguageModelCreateOptions = {
-        modelAlias: settings.selectedModel,
-        systemPrompt: getSystemPrompt(),
-        topK: settings.topK,
-        temperature: settings.temperature,
-        initialPrompts,
-      };
+  // Build (but do NOT load) the session options whenever settings change. The
+  // model is loaded on demand at roast time and unloaded right after, so it
+  // isn't held in memory while Clippy is just sitting there.
+  useEffect(() => {
+    if (!settings.selectedModel) {
+      createOptionsRef.current = null;
+      return;
+    }
+    createOptionsRef.current = {
+      modelAlias: settings.selectedModel,
+      systemPrompt: getSystemPrompt(),
+      topK: settings.topK,
+      temperature: settings.temperature,
+    };
+  }, [
+    settings.selectedModel,
+    settings.topK,
+    settings.temperature,
+    getSystemPrompt,
+  ]);
 
-      try {
-        await electronAi.create(options);
-        createOptionsRef.current = options;
-        setIsModelLoaded(true);
-      } catch (error) {
-        console.error("Failed to load model", error);
-      }
-    },
-    [
-      settings.selectedModel,
-      settings.systemPrompt,
-      settings.topK,
-      settings.temperature,
-    ],
-  );
+  // "Ready" now means a model is selected AND downloaded — not that it's
+  // currently resident in RAM (it loads on demand).
+  useEffect(() => {
+    if (debug?.simulateDownload) {
+      setIsModelLoaded(true);
+      return;
+    }
+    setIsModelLoaded(
+      !!settings.selectedModel && !!models[settings.selectedModel]?.downloaded,
+    );
+  }, [settings.selectedModel, models, debug?.simulateDownload]);
 
   const roast = useCallback(async (context?: RoastContext) => {
-    // Don't heckle if the model isn't ready or he's mid-thought.
-    if (!modelLoadedRef.current) return;
+    // Don't heckle if there's no brain available, or he's mid-thought. In cloud
+    // mode the Claude key is the brain (no local model needed).
+    if (!useCloudRef.current && !modelLoadedRef.current) return;
     if (
       statusRef.current === "thinking" ||
       statusRef.current === "responding"
@@ -218,83 +235,153 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const ctx = context || {};
-    const recentLines = ctx.recentLines || [];
+    const passedCtx = context || {};
 
-    // Pop the bubble open right away with a "thinking" beat so he feels
-    // responsive while the writers' room does its thing. (The sound waits until
-    // the actual line lands, below.)
-    setSpokenText("");
-    setAnimationKey("Thinking");
+    // Mark busy so overlapping triggers are ignored — but show NOTHING yet (no
+    // bubble, no sound). The model loads on demand and the writers' room takes a
+    // few seconds; an empty "thinking" bubble would just feel broken. We reveal
+    // only once the finished line is ready, below.
     setStatus("thinking");
-    setIsBubbleOpen(true);
 
     let chosenText = "";
     let chosenAnimation = "";
+    // The context main sent was captured when the roast fired. A slow model load
+    // can put 10–20s between then and now, so we re-fetch the freshest context
+    // right before generating — otherwise he describes the tab you already left.
+    let activeCtx: RoastContext = passedCtx;
+    let recentLines = passedCtx.recentLines || [];
     const baseOptions = createOptionsRef.current;
 
-    if (baseOptions) {
-      // Generate candidates from a few DIFFERENT comedic angles, each on a
-      // fresh session (no drift), keeping only the ones that are in-character
-      // and not something he's said before.
-      const angles = shuffle([...ROAST_ANGLES.keys()]).slice(0, CANDIDATE_COUNT);
-      const kept: Array<{ text: string; animation: string }> = [];
-      const keptText: string[] = [];
+    const refreshContext = async () => {
+      try {
+        const fresh = await clippyApi.getRoastContext();
+        if (fresh) {
+          activeCtx = fresh;
+          recentLines = fresh.recentLines || [];
+        }
+      } catch {
+        // keep what main sent
+      }
+    };
 
-      for (const angleIndex of angles) {
-        const prompt = buildRoastPrompt({ ...ctx, recentLines }, angleIndex);
-        const raw = await generateOnce(
-          { ...baseOptions, temperature: CANDIDATE_TEMPERATURE },
-          prompt,
-          PER_CANDIDATE_TIMEOUT_MS,
-        );
+    // Shared validity check: in character, fresh, doesn't misdescribe the
+    // screen, no invented specifics, no doubled time.
+    const isUsable = (text: string, against: string[]): boolean =>
+      !!text &&
+      !looksLikeJunk(text) &&
+      isNovel(text, against) &&
+      !mentionsForeignActivity(text, activeCtx.app, activeCtx.title) &&
+      !inventsUnknowableDetail(text) &&
+      !repeatsTime(text);
 
+    if (useCloudRef.current) {
+      // CLOUD BRAIN (Claude). Fast, so just grab fresh context and go. One
+      // frontier-model call is plenty — try a 2nd angle only if it trips a filter.
+      await refreshContext();
+      const angles = shuffle([...ROAST_ANGLES.keys()]);
+      for (let attempt = 0; attempt < 2 && !chosenText; attempt++) {
+        const angleIndex = angles[attempt % angles.length];
+        let raw = "";
+        try {
+          raw = await clippyApi.generateCloud(
+            systemPromptRef.current,
+            buildRoastPrompt(activeCtx, angleIndex),
+          );
+        } catch (error) {
+          // Network/key problem — stop and fall back to a hand-written line.
+          console.warn("Cloud roast failed", error);
+          break;
+        }
         const text = trimToRoast(raw);
-        if (!text || looksLikeJunk(text)) continue;
-        if (!isNovel(text, [...recentLines, ...keptText])) continue;
-        // Reject lines that misdescribe what they're doing (immersion-breaker);
-        // off-screen rambling about himself passes fine.
-        if (mentionsForeignActivity(text, ctx.app, ctx.title)) continue;
-
-        kept.push({
-          text,
-          animation:
-            ROAST_ANGLE_ANIMATIONS[angleIndex % ROAST_ANGLE_ANIMATIONS.length],
+        if (isUsable(text, recentLines)) {
+          chosenText = text;
+          chosenAnimation =
+            ROAST_ANGLE_ANIMATIONS[angleIndex % ROAST_ANGLE_ANIMATIONS.length];
+        }
+      }
+    } else if (baseOptions) {
+      // Reset the session ONCE per roast (anti-drift) and reuse it for every
+      // candidate + the critic. Reloading the model per candidate crashes the
+      // child process, so all generation happens as prompts in this one session.
+      let sessionReady = false;
+      try {
+        await electronAi.create({
+          ...baseOptions,
+          temperature: CANDIDATE_TEMPERATURE,
         });
-        keptText.push(text);
+        sessionReady = true;
+      } catch {
+        // couldn't reset — we'll fall through to a hand-written line
       }
 
-      if (kept.length === 1) {
-        chosenText = kept[0].text;
-        chosenAnimation = kept[0].animation;
-      } else if (kept.length > 1) {
-        // Critic pass: a sober, ruthless editor picks the truest, sharpest line.
-        let winner = kept[0];
-        const criticRaw = await generateOnce(
-          {
-            ...baseOptions,
-            systemPrompt: ROAST_CRITIC_SYSTEM_PROMPT,
-            temperature: 0.2,
-          },
-          buildCriticPrompt(keptText),
-          CRITIC_TIMEOUT_MS,
+      if (sessionReady) {
+        // Re-fetch context now that the (slow) load is done, so the roast is
+        // about what they're doing NOW, not when it fired.
+        await refreshContext();
+
+        // Candidates from a few DIFFERENT comedic angles; keep only the ones
+        // that are in-character, fresh, and don't misdescribe the screen.
+        const angles = shuffle([...ROAST_ANGLES.keys()]).slice(
+          0,
+          CANDIDATE_COUNT,
         );
-        const match = criticRaw.match(/\d+/);
-        if (match) {
-          const idx = parseInt(match[0], 10) - 1;
-          if (idx >= 0 && idx < kept.length) winner = kept[idx];
+        const kept: Array<{ text: string; animation: string }> = [];
+        const keptText: string[] = [];
+
+        for (const angleIndex of angles) {
+          const prompt = buildRoastPrompt(activeCtx, angleIndex);
+          const raw = await promptOnce(prompt, PER_CANDIDATE_TIMEOUT_MS);
+
+          const text = trimToRoast(raw);
+          if (!text || looksLikeJunk(text)) continue;
+          if (!isNovel(text, [...recentLines, ...keptText])) continue;
+          // Reject lines that misdescribe what they're doing (immersion-break);
+          // off-screen rambling about himself passes fine.
+          if (mentionsForeignActivity(text, activeCtx.app, activeCtx.title))
+            continue;
+          // Reject invented specifics he couldn't know (head counts, etc.).
+          if (inventsUnknowableDetail(text)) continue;
+          // Reject lines that state the time twice (reads as broken).
+          if (repeatsTime(text)) continue;
+
+          kept.push({
+            text,
+            animation:
+              ROAST_ANGLE_ANIMATIONS[
+                angleIndex % ROAST_ANGLE_ANIMATIONS.length
+              ],
+          });
+          keptText.push(text);
         }
-        chosenText = winner.text;
-        chosenAnimation = winner.animation;
+
+        if (kept.length === 1) {
+          chosenText = kept[0].text;
+          chosenAnimation = kept[0].animation;
+        } else if (kept.length > 1) {
+          // Critic pass (same session): pick the sharpest. Robust to flakiness —
+          // if it doesn't answer with a clean number, we keep the first.
+          let winner = kept[0];
+          const criticRaw = await promptOnce(
+            buildCriticPrompt(keptText),
+            CRITIC_TIMEOUT_MS,
+          );
+          const match = criticRaw.match(/\d+/);
+          if (match) {
+            const idx = parseInt(match[0], 10) - 1;
+            if (idx >= 0 && idx < kept.length) winner = kept[idx];
+          }
+          chosenText = winner.text;
+          chosenAnimation = winner.animation;
+        }
       }
     }
 
     // Only if the model gave us nothing usable do we reach for a hand-written
     // line — and even then we try to pick one he hasn't used recently.
     if (!chosenText) {
-      let fallback = getFallbackLine(ctx);
+      let fallback = getFallbackLine(activeCtx);
       for (let i = 0; i < 4 && !isNovel(fallback.text, recentLines); i++) {
-        fallback = getFallbackLine(ctx);
+        fallback = getFallbackLine(activeCtx);
       }
       chosenText = fallback.text;
       chosenAnimation = fallback.animation;
@@ -323,6 +410,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // memory is best-effort
     }
 
+    // Unload the local model now (cloud mode never loaded one) — we're done
+    // with it until the next roast, which reloads on demand. This is what keeps
+    // Clippy from being a memory hog while he's just sitting there.
+    if (!useCloudRef.current) {
+      electronAi.destroy().catch(() => {});
+    }
+
     if (dismissTimerRef.current) {
       window.clearTimeout(dismissTimerRef.current);
     }
@@ -331,28 +425,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setStatus("idle");
     }, readingTimeMs(spoken));
   }, []);
-
-  // Load the model when the selected model or generation settings change.
-  useEffect(() => {
-    if (debug?.simulateDownload) {
-      setIsModelLoaded(true);
-      return;
-    }
-
-    if (settings.selectedModel) {
-      loadModel();
-    } else if (!settings.selectedModel && isModelLoaded) {
-      electronAi
-        .destroy()
-        .then(() => setIsModelLoaded(false))
-        .catch((error) => console.error(error));
-    }
-  }, [
-    settings.selectedModel,
-    settings.systemPrompt,
-    settings.topK,
-    settings.temperature,
-  ]);
 
   // If selectedModel is undefined or unavailable, fall back to the first
   // downloaded model.
@@ -377,6 +449,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // as a stopgap until the preferred one finishes — see the migration below.)
   useEffect(() => {
     if (Object.keys(models).length === 0 || hasPerformedStartupCheck) {
+      return;
+    }
+    // If the user is running on their Claude key, don't pull down a 2GB local
+    // model they won't use.
+    if (settings.claudeApiKey?.trim()) {
       return;
     }
 

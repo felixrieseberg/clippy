@@ -18,6 +18,9 @@ const TICK_MS = 10_000;
 const STARTUP_DELAY = 8_000;
 const FIRE_THRESHOLD = 1.0;
 const MIN_GAP_MS = 15_000; // never speak more often than this
+// While a roast is being written (model load + generation can take ~10–25s),
+// don't fire another. Safety cap in case the renderer never reports back.
+const INFLIGHT_TIMEOUT_MS = 40_000;
 
 type Mood = "quiet" | "normal" | "chatty";
 
@@ -32,6 +35,11 @@ const BASE_RATE: Record<Mood, number> = {
 let timer: NodeJS.Timeout | undefined;
 let pressure = FIRE_THRESHOLD; // start primed so he greets you shortly after launch
 let lastSpokeAt = 0;
+// True from the moment we trigger a roast until the renderer reports it spoke
+// (or the safety timeout). Blocks the scheduler from stacking a second roast
+// during the long load+generate window.
+let awaitingRoast = false;
+let inflightTimer: NodeJS.Timeout | undefined;
 let lastApp: string | undefined;
 let lastSpokenApp: string | undefined;
 let lastSpokenMinutes = 0;
@@ -80,20 +88,54 @@ function buildRoastContext(behavior: BehavioralContext): RoastContext {
   };
 }
 
-function fire(now: number): void {
+// Mark a roast as in flight and arm the safety timeout. The renderer fetches
+// the actual (fresh) context itself via getFreshRoastContext once it's ready to
+// generate, so here we only send a trigger built from a non-consuming peek.
+function beginRoast(): void {
+  awaitingRoast = true;
+  if (inflightTimer) clearTimeout(inflightTimer);
+  inflightTimer = setTimeout(() => {
+    // Renderer never reported back (error before it spoke) — un-gate.
+    awaitingRoast = false;
+    lastSpokeAt = Date.now();
+    pressure = 0;
+  }, INFLIGHT_TIMEOUT_MS);
+}
+
+function fire(): void {
   const win = getMainWindow();
   if (!win || win.isDestroyed()) return;
 
-  const behavior = getBehavioralContext(); // consumes one-shot flags
-  win.webContents.send(IpcMessages.ROAST_CONTEXT, buildRoastContext(behavior));
+  const peek = peekContext(); // non-consuming; renderer re-fetches fresh
+  lastSpokenApp = peek.app;
+  lastSpokenMinutes = peek.minutesOnApp || 0;
 
-  lastSpokeAt = now;
+  beginRoast();
+  win.webContents.send(IpcMessages.ROAST_CONTEXT, buildRoastContext(peek));
+}
+
+/**
+ * Fresh context for the renderer to pull right before it generates — AFTER the
+ * (slow) model load — so the roast reflects what the user is doing now, not what
+ * they were doing when the roast first fired. Consumes the one-shot flags.
+ */
+export async function getFreshRoastContext(): Promise<RoastContext> {
+  await sampleNow();
+  return buildRoastContext(getBehavioralContext());
+}
+
+/** The renderer reports it actually spoke — un-gate and reset the cadence. */
+export function notifyRoastDone(): void {
+  if (inflightTimer) {
+    clearTimeout(inflightTimer);
+    inflightTimer = undefined;
+  }
+  awaitingRoast = false;
+  lastSpokeAt = Date.now();
   pressure = 0;
-  lastSpokenApp = behavior.app;
-  lastSpokenMinutes = behavior.minutesOnApp || 0;
 
-  // When he's chatty and on a roll, occasionally prime a quick follow-up riff
-  // (next tick or two), capped so he doesn't run away with it.
+  // When he's chatty and on a roll, occasionally prime a quick follow-up riff,
+  // capped so he doesn't run away with it.
   if (mood === "chatty" && chattyStreak < 2 && Math.random() < 0.5) {
     pressure = FIRE_THRESHOLD * 0.8;
     chattyStreak += 1;
@@ -106,6 +148,8 @@ function tick(): void {
   if (getStateManager().store.get("settings").soberMode) {
     return;
   }
+  // Don't stack a second roast while one is still being written.
+  if (awaitingRoast) return;
 
   const win = getMainWindow();
   if (!win || win.isDestroyed()) return;
@@ -118,7 +162,7 @@ function tick(): void {
   lastApp = peek.app;
 
   if (now - lastSpokeAt >= MIN_GAP_MS && pressure >= FIRE_THRESHOLD) {
-    fire(now);
+    fire();
   }
 }
 
@@ -152,15 +196,13 @@ export async function roastNow(): Promise<void> {
   const win = getMainWindow();
   if (!win || win.isDestroyed()) return;
 
-  // Grab a fresh sample so a deliberate poke reflects the very latest state.
+  // Grab a fresh sample so the trigger reflects the latest state (the renderer
+  // will also re-fetch fresh context right before it generates).
   await sampleNow();
-  const behavior = getBehavioralContext();
-  win.webContents.send(IpcMessages.ROAST_CONTEXT, buildRoastContext(behavior));
+  const peek = peekContext();
+  lastSpokenApp = peek.app;
+  lastSpokenMinutes = peek.minutesOnApp || 0;
 
-  // Reset scheduling so the poke doesn't immediately trigger another.
-  lastSpokeAt = Date.now();
-  pressure = 0;
-  chattyStreak = 0;
-  lastSpokenApp = behavior.app;
-  lastSpokenMinutes = behavior.minutesOnApp || 0;
+  beginRoast(); // gate the scheduler while this one is written
+  win.webContents.send(IpcMessages.ROAST_CONTEXT, buildRoastContext(peek));
 }

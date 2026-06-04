@@ -5,9 +5,14 @@ import {
   minimizeChatWindow,
 } from "./windows";
 import { IpcMessages } from "../ipc-messages";
-import { roastNow } from "./roaster";
+import {
+  roastNow,
+  notifyRoastDone,
+  getFreshRoastContext,
+} from "./roaster";
 import { ensureScreenRecordingPermission } from "./permissions";
 import { recordLine, clearMemory } from "./clippy-memory";
+import { generateCloud } from "./cloud-llm";
 import { getModelManager } from "./models";
 import { getStateManager } from "./state";
 import { getChatManager } from "./chats";
@@ -27,10 +32,17 @@ export function setupIpcListeners() {
 
   // Roaster
   ipcMain.handle(IpcMessages.ROAST_NOW, () => roastNow());
-  ipcMain.handle(IpcMessages.ROAST_SPOKEN, (_, line: string) =>
-    recordLine(line),
-  );
+  ipcMain.handle(IpcMessages.ROAST_SPOKEN, (_, line: string) => {
+    recordLine(line);
+    notifyRoastDone();
+  });
+  ipcMain.handle(IpcMessages.GET_ROAST_CONTEXT, () => getFreshRoastContext());
   ipcMain.handle(IpcMessages.CLEAR_MEMORY, () => clearMemory());
+  ipcMain.handle(
+    IpcMessages.GENERATE_CLOUD,
+    (_, systemPrompt: string, userPrompt: string) =>
+      generateCloud(systemPrompt, userPrompt),
+  );
 
   // Permissions
   ipcMain.handle(IpcMessages.ENSURE_SCREEN_PERMISSION, () =>
