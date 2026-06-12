@@ -1,7 +1,7 @@
 import { powerMonitor } from "electron";
 import { getStateManager } from "./state";
 import { isIncognito, isSensitiveTitle, sanitizeTitle } from "./privacy";
-import { recordObservation } from "./clippy-memory";
+import { recordActivity } from "./clippy-memory";
 import { BehavioralContext, PartOfDay } from "../ipc-messages";
 
 /**
@@ -34,6 +34,18 @@ let pendingReturnedToApp = false;
 let pendingIdleReturn = false;
 let currentOpenApps: string[] = [];
 let sampleCount = 0;
+// Minutes-per-app accumulated since the last flush to persistent memory.
+let pendingMinutes: Record<string, number> = {};
+const FLUSH_EVERY = 12; // ~every 60s at the 5s sample rate
+
+function flushPatterns(): void {
+  const entries = Object.entries(pendingMinutes);
+  if (entries.length === 0) return;
+  for (const [app, minutes] of entries) {
+    recordActivity(app, minutes);
+  }
+  pendingMinutes = {};
+}
 
 function isClippy(app?: string): boolean {
   return !!app && /clippy|electron/i.test(app);
@@ -136,6 +148,16 @@ async function sample(): Promise<void> {
 
   // Never retain sensitive/incognito titles, even transiently in context.
   currentTitle = sensitive ? undefined : sanitizeTitle(win.title);
+
+  // Tally time on the active app for the long-term pattern memory (app names
+  // only). Flush to disk ~once a minute rather than every sample.
+  if (currentApp) {
+    pendingMinutes[currentApp] =
+      (pendingMinutes[currentApp] || 0) + SAMPLE_INTERVAL / 60_000;
+  }
+  if (sampleCount % FLUSH_EVERY === 0) {
+    flushPatterns();
+  }
 }
 
 function partOfDay(hour: number): PartOfDay {
@@ -154,22 +176,6 @@ function formatTime(d: Date): string {
   h = h % 12;
   if (h === 0) h = 12;
   return `${h}:${m.toString().padStart(2, "0")}${ampm}`;
-}
-
-/**
- * Quietly note durable, non-sensitive patterns so Clippy can call them back
- * later ("you work late, you always have"). App names only — never titles.
- */
-function maybeRecordObservations(ctx: BehavioralContext): void {
-  if (ctx.partOfDay === "lateNight") {
-    recordObservation("they're often up working in the small hours");
-  }
-  if (ctx.thrashing) {
-    recordObservation("they app-hop and can't settle when they're stuck");
-  }
-  if (ctx.app && ctx.minutesOnApp && ctx.minutesOnApp >= 90) {
-    recordObservation(`they can tunnel on ${ctx.app} for hours`);
-  }
 }
 
 const DAY_NAMES = [
@@ -213,11 +219,11 @@ function snapshot(consume: boolean): BehavioralContext {
   };
 
   if (consume) {
-    // One-shot flags are consumed (and observations recorded) only when this
-    // becomes an actual roast — not on the scheduler's frequent peeks.
+    // One-shot flags are consumed only when this becomes an actual roast — not
+    // on the scheduler's frequent peeks. (Pattern memory is fed continuously by
+    // the sample loop's flushPatterns, not here.)
     pendingReturnedToApp = false;
     pendingIdleReturn = false;
-    maybeRecordObservations(ctx);
   }
 
   return ctx;

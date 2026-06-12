@@ -85,7 +85,7 @@ function buildRoastContext(behavior: BehavioralContext): RoastContext {
     title: behavior.title,
     behavior,
     recentLines: getRecentLines(14),
-    observations: getObservations(8),
+    observations: getObservations(behavior.app),
   };
 }
 

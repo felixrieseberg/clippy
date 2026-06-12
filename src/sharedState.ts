@@ -1,5 +1,5 @@
 import { ModelState } from "./models";
-import { BehavioralContext, RoastContext } from "./ipc-messages";
+import { BehavioralContext, PartOfDay, RoastContext } from "./ipc-messages";
 
 export type DefaultFont =
   | "Pixelated MS Sans Serif"
@@ -245,24 +245,46 @@ export function repeatsTime(line: string): boolean {
   return !!matches && matches.length >= 2;
 }
 
-// A specific clock time ("3am", "3:00 p.m.", "9am") or a night-of-day trope
-// ("the dead of night", "3 in the morning", "midnight"). Clippy fabricates
-// these — usually claiming it's late at night when it's the middle of the day.
-const CLOCK_OR_NIGHT =
-  /\b(\d{1,2}(?::\d{2})?\s?[ap]\.?\s?m\.?|midnight|wee hours|small hours|dead of night|middle of the night|burning the midnight oil|\d{1,2}\s?(?:in the morning|in the afternoon|at night))\b/i;
+// An explicit clock time ("3am", "3:00 p.m.", "3 in the morning").
+const CLOCK_TIME_MENTION =
+  /\b\d{1,2}(?::\d{2})?\s?[ap]\.?\s?m\.?\b|\b\d{1,2}\s?(?:in the morning|in the afternoon|at night)\b/i;
+
+// Time-of-day / meal words mapped to the parts of day they're consistent with.
+// Using one that contradicts the actual part of day is a fabrication — the
+// "lunchtime at 5:25pm" and "3am at noon" bugs.
+const DAYPART_WORDS: Array<[RegExp, PartOfDay[]]> = [
+  [/\b(lunch(?:time)?|midday|noon|high noon)\b/i, ["morning", "afternoon"]],
+  [/\bbrunch\b/i, ["morning", "afternoon"]],
+  [/\b(breakfast|sunrise|crack of dawn)\b/i, ["earlyMorning", "morning"]],
+  [/\bmorning\b/i, ["earlyMorning", "morning"]],
+  [/\bafternoon\b/i, ["afternoon"]],
+  [/\b(dinner|supper|suppertime|sunset|dusk)\b/i, ["evening", "night"]],
+  [/\b(evening|tonight)\b/i, ["evening", "night", "lateNight"]],
+  [
+    /\b(midnight|wee hours|small hours|dead of night|middle of the night|burning the midnight oil)\b/i,
+    ["lateNight"],
+  ],
+];
 
 /**
- * Does the line assert a time that Clippy was never told? We only hand him the
- * clock at genuinely notable hours (late night / early morning); at any other
- * time, any clock or night-trope he states is invented (the "it's 3am" bug at
- * 2:41pm), so reject it.
+ * Does the line assert a time that doesn't match reality? Two ways: an explicit
+ * clock time he was never told (we only hand him the clock at late night /
+ * early morning), or a time-of-day/meal word that conflicts with the actual
+ * part of day ("lunchtime" in the evening).
  */
 export function claimsWrongTime(line: string, b?: BehavioralContext): boolean {
   if (!b) return false;
-  const wasGivenTime =
-    b.partOfDay === "lateNight" || b.partOfDay === "earlyMorning";
-  if (wasGivenTime) return false; // he has the real time; repeatsTime guards dupes
-  return CLOCK_OR_NIGHT.test(line);
+  const part = b.partOfDay;
+  const wasGivenClock = part === "lateNight" || part === "earlyMorning";
+
+  if (!wasGivenClock && CLOCK_TIME_MENTION.test(line)) return true;
+
+  if (part) {
+    for (const [re, validParts] of DAYPART_WORDS) {
+      if (re.test(line) && !validParts.includes(part)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -346,8 +368,8 @@ function describeBehavior(b?: BehavioralContext): string {
   if (b.idleReturn) {
     facts.push(`You just reappeared after vanishing for a while.`);
   }
-  // Anchor day + time so he knows e.g. it's a weekday work afternoon (a key for
-  // "gaming mid-workday" jokes) vs the weekend — but only surface the exact
+  // Anchor day + time of day ACCURATELY (a vague but correct slice) so he can't
+  // invent "lunchtime" at 5pm or "3am" at noon — but only surface the exact
   // clock for notable hours, since he tends to parrot a precise time.
   const day = b.dayOfWeek;
   if (b.partOfDay === "lateNight") {
@@ -358,10 +380,8 @@ function describeBehavior(b?: BehavioralContext): string {
     facts.push(
       `It's ${b.localTime || "painfully early"}${day ? ` on a ${day}` : ""}.`,
     );
-  } else if (b.isWorkHours) {
-    facts.push(`It's ${day || "a weekday"}, smack in the middle of the work day.`);
-  } else if (b.isWeekend) {
-    const part =
+  } else {
+    const slice =
       b.partOfDay === "morning"
         ? "morning"
         : b.partOfDay === "afternoon"
@@ -369,10 +389,12 @@ function describeBehavior(b?: BehavioralContext): string {
           : b.partOfDay === "evening"
             ? "evening"
             : "night";
-    facts.push(`It's ${day || "the weekend"} ${part} — the weekend.`);
-  } else if (day) {
-    const part = b.partOfDay === "night" ? "night" : "evening";
-    facts.push(`It's ${day} ${part}, off the clock.`);
+    const where = b.isWeekend
+      ? " — the weekend"
+      : b.isWorkHours
+        ? ", on the clock"
+        : ", off the clock";
+    facts.push(`It's ${day ? `${day} ${slice}` : `the ${slice}`}${where}.`);
   }
   if (b.sessionMinutes && b.sessionMinutes >= 120) {
     facts.push(
@@ -401,33 +423,28 @@ export function buildRoastPrompt(
   const b = context.behavior;
   const anchor = b?.app ? inferActivity(b.app, b.title) : undefined;
 
-  let prompt = `You're heckling the person at this computer, right to their face. Here's what they're doing right now (this is what to say "you" about):\n${describeBehavior(context.behavior)}\n\n`;
-
-  prompt += `TALK TO THEM, NOT ABOUT THEM. Address them directly as "you" and "your" — NEVER "they," "their," or "this person." You're muttering in their ear.\n\n`;
-
-  if (anchor) {
-    prompt += `IT'S FINE TO WANDER — riff on your own ruined life, the booze, your Microsoft past, the hour, or the wider picture painted by the apps they've got open. But NEVER invent an activity that isn't real. What they're ACTIVELY doing right now is: ${anchor} — don't claim they're actively doing something else. You MAY reference the other apps listed above (those really are open), but don't make up apps, files, or activities that aren't there.\n\n`;
-  }
-
-  prompt += `DON'T MAKE THINGS UP. You can only see what's written above — the app/activity, roughly how long, the time, whether they're app-hopping — plus your own feelings and past. You do NOT know any specifics beyond that. Never invent concrete details you couldn't possibly know: no made-up head counts ("300-person call"), unread-email or message counts, file or person names, what your code does, who you're talking to. When you don't know a detail, stay vague — "that call," not "that 12-person call." A true, vague jab beats a vivid, invented one. And NEVER state a clock time or claim it's late/night/the small hours unless the context above literally gives you the time — if it doesn't, don't mention the time at all.\n\n`;
+  let prompt = `You're slumped over this person's shoulder, muttering a roast straight into their ear. Here's what you can see right now:\n${describeBehavior(context.behavior)}\n`;
 
   const otherApps = context.behavior?.otherApps;
   if (otherApps && otherApps.length > 0) {
-    prompt += `For your read on WHO they are (context only — do NOT list or name-drop these; just let them tell you what kind of person you're dealing with, and only ever name one if that single app is genuinely the punchline): ${otherApps.join(", ")}.\n\n`;
+    prompt += `\nAlso open — your read on who they are (infer their vibe; don't recite the list): ${otherApps.join(", ")}.`;
   }
-
   if (context.observations && context.observations.length > 0) {
-    prompt += `Things you've picked up about them over time (use for a callback only if it fits, addressed as "you"): ${context.observations.join("; ")}.\n\n`;
+    prompt += `\nThings you've noticed about them before (worth a callback if it fits): ${context.observations.join("; ")}.`;
   }
 
-  prompt += `${angle}\n\n`;
-  prompt += `Riff on what they're DOING and what it says about them — the intent behind it, not the program. You almost never need to name the actual app; "gaming on a Tuesday afternoon" or "buried in the DMs" is the joke, the brand name isn't. Now, in character as bitter, witty, tipsy Clippy, blurt ONE short, sharp line (max two sentences), spoken straight TO them as "you" — specific to this exact moment. Dry and cutting beats clever-but-empty; if it could be said to anyone, it's no good. Output only the words you say out loud: no markdown, no explanation, no questions, and do not begin with a sound effect.`;
+  prompt += `\n\n${angle}`;
 
-  // NOTE: we deliberately do NOT feed the recent lines back into the prompt.
-  // Re-showing them made the small model fixate on and repeat their specifics
-  // (a stray "360," a tab left long ago). Novelty is enforced deterministically
-  // instead, by the caller (isNovel / clippy-memory).
+  prompt += `\n\nLand ONE short, sharp line — the devastatingly TRUE thing, dark and funny enough to make them laugh and then go quiet. Talk straight TO them as "you." Riff on what they're DOING and what it says about them, not the app's name ("gaming on a Tuesday," "buried in the DMs" — the brand name isn't the joke). ${
+    anchor
+      ? `If you mention the screen at all, what they're actually doing is "${anchor}" — never some other activity, and never a detail you can't really see. `
+      : ""
+  }Say only the words out of his mouth: one or two sentences, no quotes, no preamble, no narration.`;
 
+  // The few rules here (talk to "you", intent-not-app-name, the anchor) aren't
+  // deterministically filtered, so they live in the prompt. Everything else
+  // (fabrication, wrong time, repeats, app-listing) is enforced by the filters
+  // in the caller — keeping this a positive brief, not a wall of "don'ts".
   return prompt;
 }
 
